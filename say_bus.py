@@ -48,5 +48,5 @@ if __name__ == "__main__":
     parser.add_argument('-v', "--voice", help="voice", default='en-f1')
     args = parser.parse_args()
 
-    buses = next_bus.get_bus_times(args.route, args.stop)
+    buses = next_bus.get_bus_times(args.stop, args.route)
     say_times(buses)

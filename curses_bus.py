@@ -31,6 +31,15 @@ def unblank_screen():
     pass
 
 
+def expected_short(usec):
+    minutes = int(next_bus.minutes_till_bus(usec))
+    if not minutes:
+        return 'Due'
+    if minutes < 0:
+        return 'Gone'
+    return str(minutes) + ' min'
+
+
 def write_console(stdscr, buses, nlines):
     for i, b in enumerate(buses[0:nlines]):
         mins_left = next_bus.expected_short(b['EstimatedTime'])
@@ -50,7 +59,7 @@ def main_loop(args):
         os.setuid(1000)
     while True:
         try:
-            buses = next_bus.get_bus_times(args.route, args.stop)
+            buses = next_bus.get_bus_times(args.stop, args.route)
             stdscr.clear()
         except:
             pass
