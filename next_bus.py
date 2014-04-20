@@ -24,10 +24,9 @@ BUS_PREDICTION = 1
 
 def _parse_bus_response(requested_fields, response_type, lines):
     """
-    Countdown requests unfortunately do not return JSON.
-    Instead they return a sequence of JSON arrays
+    Countdown responses consist of a sequence of JSON arrays
     Each array consists of a tag, followed by a list of values corresponding to the
-    requested fields. (Why could they not have just returned a JSON object?)
+    requested fields.
     :param requested_fields: fields requested
     :param response_type: type of data to parse
     :param response_text: http response body
