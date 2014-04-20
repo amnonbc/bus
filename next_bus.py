@@ -65,10 +65,15 @@ def get_bus_times(stop_code, bus_num=None):
     return sorted(response, key=lambda b: int(b['EstimatedTime']))
 
 
-def get_bus_stops(bus_num):
+def get_bus_stops(bus_line):
+    """
+    Returns an list of bus stops for bus_line
+    :param bus_line:
+    :return: list of dicts - one dict for each bus stop
+    """
     requested_fields = ['StopPointName', 'StopCode1', 'Towards']
     filter = {
-        'LineName': bus_num,
+        'LineName': bus_line,
         'ReturnList': ','.join(requested_fields)}
     return _get_coundown_data(filter, STOP_ARRAY, requested_fields)
 
