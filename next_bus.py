@@ -74,7 +74,7 @@ def get_bus_stops(bus_num):
     return get_coundown_data(filter, STOP_ARRAY, requested_fields)
 
 def write_busses(buses):
-    for b in buses[0:args.num_busses]:
+    for b in buses:
         print "%3s %20s %6s" % (b['LineName'], b['DestinationText'],
                                 ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S'))
 
@@ -84,9 +84,6 @@ if __name__ == "__main__":
     parser.add_argument('-r', "--route", help="bus route", type=int, default=None)
     parser.add_argument('-s', "--stop", help="bus stop id", default=74640)
     parser.add_argument('-l', "--list_stops", help="list all bus stops for route", action='store_true')
-
-    parser.add_argument('-n', "--num_busses", help="number of busses to report", type=int, default=8)
-    parser.add_argument('-v', "--voice", help="voice", default='en-f1')
     args = parser.parse_args()
 
     if args.list_stops:
