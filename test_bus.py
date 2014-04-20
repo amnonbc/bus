@@ -23,7 +23,7 @@ response = [
 
 def test_parse_bus_response():
     print field_list
-    res = next_bus.parse_bus_response(field_list, next_bus.BUS_PREDICTION, response)
-    eq_('22', res[0]['LineName'])
+    res = next_bus._parse_bus_response(field_list, next_bus.BUS_PREDICTION, response)
+    eq_('14', res[0]['LineName'])
     eq_("Green Park Station", res[0]["StopCode1"])
-    eq_(1, res[0]["EstimatedTime"])
+    eq_(2, res[0]["EstimatedTime"])

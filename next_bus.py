@@ -22,7 +22,7 @@ def minutes_till_bus(ts):
 STOP_ARRAY = 0
 BUS_PREDICTION = 1
 
-def parse_bus_response(requested_fields, response_type, lines):
+def _parse_bus_response(requested_fields, response_type, lines):
     """
     Countdown requests unfortunately do not return JSON.
     Instead they return a sequence of JSON arrays
@@ -41,12 +41,12 @@ def parse_bus_response(requested_fields, response_type, lines):
     return res
 
 
-def get_coundown_data(filter, response_type, requested_fields):
+def _get_coundown_data(filter, response_type, requested_fields):
     BUS_BASE_URL = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
     p = requests.get(BUS_BASE_URL, params=filter)
     if p.status_code != requests.codes.ok:
         p.raise_for_status()
-    return parse_bus_response(requested_fields, response_type, p.iter_lines())
+    return _parse_bus_response(requested_fields, response_type, p.iter_lines())
 
 
 def get_bus_times(stop_code, bus_num=None):
@@ -62,8 +62,8 @@ def get_bus_times(stop_code, bus_num=None):
         'ReturnList': ','.join(requested_fields)}
     if bus_num:
         filter['LineName'] = bus_num
-    response = get_coundown_data(filter, BUS_PREDICTION, requested_fields)
-    return sorted(response, key=lambda b: b['EstimatedTime'])
+    response = _get_coundown_data(filter, BUS_PREDICTION, requested_fields)
+    return sorted(response, key=lambda b: int(b['EstimatedTime']))
 
 
 def get_bus_stops(bus_num):
@@ -71,9 +71,9 @@ def get_bus_stops(bus_num):
     filter = {
         'LineName': bus_num,
         'ReturnList': ','.join(requested_fields)}
-    return get_coundown_data(filter, STOP_ARRAY, requested_fields)
+    return _get_coundown_data(filter, STOP_ARRAY, requested_fields)
 
-def write_busses(buses):
+def _write_busses(buses):
     for b in buses:
         print "%3s %20s %6s" % (b['LineName'], b['DestinationText'],
                                 ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S'))
@@ -90,5 +90,5 @@ if __name__ == "__main__":
         pprint.pprint(get_bus_stops(args.route))
     else:
         buses = get_bus_times(args.stop, args.route)
-        write_busses(buses)
+        _write_busses(buses)
 
