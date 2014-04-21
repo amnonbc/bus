@@ -2,10 +2,15 @@
 
 import curses
 import argparse
-import next_bus
 import time
 import datetime
 import os
+
+import next_bus
+
+# This script provides a running textual display of the next bus arrivals.
+# It is inspired by the electronic notice boards above some London bus stops.
+# But it uses a 10x5 character screen which has a much squarer shape than the TFL signs.
 
 def init_console():
     # redirect stdin and stdout to console
@@ -28,7 +33,6 @@ def uninit_console():
 
 def unblank_screen():
     print "\033[9;0]"
-    pass
 
 
 def expected_short(usec):
@@ -57,6 +61,7 @@ def main_loop(args):
     stdscr = init_console()
     if os.getuid() == 0:
         os.setuid(1000)
+    # Maybe better to use gEvent etc. than invent my own timing loop
     while True:
         try:
             buses = next_bus.get_bus_times(args.stop, args.route)
@@ -64,6 +69,8 @@ def main_loop(args):
         except:
             pass
         for i in range(args.delay):
+            # should perhaps use the ExpiresTime provided by TFL, rather than a user-settable
+            # polling delay
             write_console(stdscr, buses, args.num_busses)
             time.sleep(1)
 
