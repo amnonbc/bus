@@ -3,6 +3,10 @@ import subprocess
 import next_bus
 import argparse
 
+# As the raspberry pi comes with no display, I thought that speaking the bus times through the audio port
+# would be a convenient.
+
+
 DEVNULL = open('/dev/null', 'w')
 
 
