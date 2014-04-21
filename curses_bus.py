@@ -8,6 +8,7 @@ import os
 
 import next_bus
 
+
 # This script provides a running textual display of the next bus arrivals.
 # It is inspired by the electronic notice boards above some London bus stops.
 # But it uses a 10x5 character screen which has a much squarer shape than the TFL signs.
@@ -76,7 +77,7 @@ def main_loop(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Display a board of next arrival times for TFL buses')
     parser.add_argument('-r', "--route", help="bus route", type=int, default=102)
     parser.add_argument('-s', "--stop", help="bus stop id", default=74640)
     parser.add_argument('-n', "--num_busses", help="number of busses to report", type=int, default=3)

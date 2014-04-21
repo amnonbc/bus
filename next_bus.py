@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# A library for accessing TFL countdown times
 
 import json
 import datetime
@@ -84,7 +85,7 @@ def _write_busses(buses):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Print predicted arrival times for TFL buses')
     parser.add_argument('-r', "--route", help="bus route", type=int, default=None)
     parser.add_argument('-s', "--stop", help="bus stop id", default=74640)
     parser.add_argument('-l', "--list_stops", help="list all bus stops for route", action='store_true')
