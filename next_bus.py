@@ -43,6 +43,7 @@ def _parse_bus_response(requested_fields, response_type, lines):
 
 def _get_coundown_data(filter, response_type, requested_fields):
     BUS_BASE_URL = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+    filter['ReturnList'] = ','.join(requested_fields)
     p = requests.get(BUS_BASE_URL, params=filter)
     if p.status_code != requests.codes.ok:
         p.raise_for_status()
@@ -57,9 +58,7 @@ def get_bus_times(stop_code, bus_num=None):
     :return: array of dicts of bus attributes, sorted in order of arrival time
     """
     requested_fields = ['LineName', 'DestinationText', 'EstimatedTime']
-    filter = {
-        'StopCode1': stop_code,
-        'ReturnList': ','.join(requested_fields)}
+    filter = {'StopCode1': stop_code}
     if bus_num:
         filter['LineName'] = bus_num
     response = _get_coundown_data(filter, BUS_PREDICTION, requested_fields)
@@ -73,15 +72,14 @@ def get_bus_stops(bus_line):
     :return: list of dicts - one dict for each bus stop
     """
     requested_fields = ['StopPointName', 'StopCode1', 'Towards']
-    filter = {
-        'LineName': bus_line,
-        'ReturnList': ','.join(requested_fields)}
+    filter = {'LineName': bus_line}
     return _get_coundown_data(filter, STOP_ARRAY, requested_fields)
 
 def _write_busses(buses):
     for b in buses:
         print "%3s %20s %6s" % (b['LineName'], b['DestinationText'],
-                                ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S'))
+                                ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S'),
+        )
 
 
 if __name__ == "__main__":
