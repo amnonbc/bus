@@ -5,6 +5,7 @@ import json
 import datetime
 import argparse
 import pprint
+import sys
 
 import requests
 
@@ -35,9 +36,12 @@ def _parse_bus_response(requested_fields, response_type, lines):
     """
     res = []
     for line in lines:
-        j = json.loads(line)
-        if j.pop(0) == response_type:
-            res.append({field: val for field, val in zip(requested_fields, j)})
+        try:
+            j = json.loads(line)
+            if j.pop(0) == response_type:
+                res.append({field: val for field, val in zip(requested_fields, j)})
+        except:
+            pass # TFL returned malformed JSON :-(
     return res
 
 
@@ -90,6 +94,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.list_stops:
+        if not args.route:
+            sys.exit('--route argument must be specified')
         pprint.pprint(get_bus_stops(args.route))
     else:
         buses = get_bus_times(args.stop, args.route)
