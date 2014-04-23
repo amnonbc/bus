@@ -78,8 +78,8 @@ def get_bus_stops(bus_line):
 def _write_busses(buses):
     for b in buses:
         print "%3s %20s %6s" % (b['LineName'], b['DestinationText'],
-                                ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S'),
-        )
+                                ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S')
+                                )
 
 
 if __name__ == "__main__":
@@ -94,4 +94,3 @@ if __name__ == "__main__":
     else:
         buses = get_bus_times(args.stop, args.route)
         _write_busses(buses)
-
