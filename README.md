@@ -1,6 +1,6 @@
 # bus
 
-A simple python app which queries the TFL countdown API.
+A simple python app which queries the [TFL countdown](http://countdown.tfl.gov.uk/) API.
 
 `get_bus_stops(bus_number)`
 return a list of bus stops on the route of bus_number
