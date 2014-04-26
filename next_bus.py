@@ -8,6 +8,7 @@ import sys
 
 import geopy
 import geopy.geocoders
+import geopy.distance
 import requests
 
 
@@ -88,9 +89,12 @@ def get_bus_stops_near(location):
     """
     geo = geopy.geocoders.GoogleV3()
     _, loc = geo.geocode(location)
-    requested_fields = ['StopPointName', 'StopCode1', 'Towards']
+    def dist(s):
+        return geopy.distance.distance(loc, (s['Latitude'], s['Longitude']))
+    requested_fields = ['StopPointName', 'StopCode1', 'Towards','Latitude','Longitude']
     filter = {'Circle': '%g,%g,500' % loc}
-    return _get_coundown_data(filter, STOP_ARRAY, requested_fields)
+    stops =  _get_coundown_data(filter, STOP_ARRAY, requested_fields)
+    return sorted(stops, key=dist)
 
 def _write_busses(buses):
     for b in buses:
