@@ -4,9 +4,10 @@
 import json
 import datetime
 import argparse
-import pprint
 import sys
 
+import geopy
+import geopy.geocoders
 import requests
 
 
@@ -79,24 +80,47 @@ def get_bus_stops(bus_line):
     filter = {'LineName': bus_line}
     return _get_coundown_data(filter, STOP_ARRAY, requested_fields)
 
+def get_bus_stops_near(location):
+    """
+    Returns an list of bus stops near specified location
+    :param location: post code
+    :return: list of dicts - one dict for each bus stop
+    """
+    geo = geopy.geocoders.GoogleV3()
+    _, loc = geo.geocode(location)
+    requested_fields = ['StopPointName', 'StopCode1', 'Towards']
+    filter = {'Circle': '%g,%g,500' % loc}
+    return _get_coundown_data(filter, STOP_ARRAY, requested_fields)
+
 def _write_busses(buses):
     for b in buses:
         print "%3s %20s %6s" % (b['LineName'], b['DestinationText'],
                                 ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S')
                                 )
 
+def _write_stops(stops):
+    for s in stops:
+        towards = s['Towards']
+        print '%s, %s' % (s['StopCode1'], s['StopPointName']),
+        if towards:
+            print ', towards ', towards,
+        print
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Print predicted arrival times for TFL buses')
     parser.add_argument('-r', "--route", help="bus route", type=int, default=None)
+    parser.add_argument('-p', "--postcode", help="find stops within 500m of post code", default=None)
     parser.add_argument('-s', "--stop", help="bus stop id", default=74640)
     parser.add_argument('-l', "--list_stops", help="list all bus stops for route", action='store_true')
     args = parser.parse_args()
 
-    if args.list_stops:
+    if args.postcode:
+        _write_stops(get_bus_stops_near(args.postcode))
+    elif args.list_stops:
         if not args.route:
             sys.exit('--route argument must be specified')
-        pprint.pprint(get_bus_stops(args.route))
+        _write_stops(get_bus_stops(args.route))
     else:
         buses = get_bus_times(args.stop, args.route)
         _write_busses(buses)
