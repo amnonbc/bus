@@ -41,7 +41,7 @@ def _parse_bus_response(requested_fields, response_type, lines):
         try:
             j = json.loads(line)
             if j.pop(0) == response_type:
-                res.append({field: val for field, val in zip(requested_fields, j)})
+                res.append(dict(zip(requested_fields, j)))
         except:
             pass # TFL returned malformed JSON :-(
     return res
