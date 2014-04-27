@@ -9,6 +9,7 @@ import os
 import next_bus
 
 
+
 # This script provides a running textual display of the next bus arrivals.
 # It is inspired by the electronic notice boards above some London bus stops.
 # But it uses a 10x5 character screen which has a much squarer shape than the TFL signs.
@@ -47,7 +48,7 @@ def expected_short(usec):
 
 def write_console(stdscr, buses, nlines):
     for i, b in enumerate(buses[0:nlines]):
-        mins_left = next_bus.expected_short(b['EstimatedTime'])
+        mins_left = expected_short(b['EstimatedTime'])
         stdscr.addstr(i, 0, "%3s %6s" % (b['LineName'], mins_left))
     write_time(stdscr)
     stdscr.refresh()
