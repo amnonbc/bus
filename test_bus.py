@@ -29,7 +29,7 @@ def test_parse_bus_response():
     eq_("Green Park Station", res[0]["StopCode1"])
     eq_(2, res[0]["EstimatedTime"])
 
-def test_sort_return_fileds():
+def test_sort_return_fields():
     f = ['LineName', 'StopCode1']
     next_bus._sort_to_tfl_order(f)
     eq_(['StopCode1', 'LineName'], f)

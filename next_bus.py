@@ -26,6 +26,8 @@ def minutes_till_bus(ts):
 STOP_ARRAY = 0
 BUS_PREDICTION = 1
 
+# TFL say that they will return the data in this order _irrespective_ of the oder specified
+# in the ReturnList argument
 RETURNABLE_FIELDS = ['StopPointName', 'StopID', 'StopCode1', 'StopCode2', 'StopPointState',
                   'StopPointType', 'StopPointIndicator', 'Towards', 'Bearing', 'Latitude',
                   'Longitude', 'VisitNumber', 'TripID', 'VehicleID', 'RegistrationNumber',
@@ -33,8 +35,10 @@ RETURNABLE_FIELDS = ['StopPointName', 'StopID', 'StopCode1', 'StopCode2', 'StopP
                   'EstimatedTime', 'MessageUUID', 'MessageText', 'MessageType', 'MessagePriority',
                   'StartTime', 'ExpireTime', 'BaseVersion']
 
+
 def _sort_to_tfl_order(fields):
     fields.sort(key=lambda f: RETURNABLE_FIELDS.index(f))
+
 
 def _parse_bus_response(requested_fields, response_type, lines):
     """
@@ -43,8 +47,8 @@ def _parse_bus_response(requested_fields, response_type, lines):
     requested fields.
     :param requested_fields: fields requested
     :param response_type: type of data to parse
-    :param response_text: http response body
-    :return: list of dict sorted by bus arrival time
+    :param lines: line iterator over http response body
+    :return: list of dict
     """
     res = []
     for line in lines:
@@ -53,15 +57,15 @@ def _parse_bus_response(requested_fields, response_type, lines):
             if j.pop(0) == response_type:
                 res.append(dict(zip(requested_fields, j)))
         except:
-            pass # TFL returned malformed JSON :-(
+            pass  # TFL returned malformed JSON :-(
     return res
 
 
-def _get_coundown_data(filter, response_type, requested_fields):
+def _get_countdown_data(selectors, response_type, requested_fields):
     BUS_BASE_URL = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
     _sort_to_tfl_order(requested_fields)
-    filter['ReturnList'] = ','.join(requested_fields)
-    p = requests.get(BUS_BASE_URL, params=filter)
+    selectors['ReturnList'] = ','.join(requested_fields)
+    p = requests.get(BUS_BASE_URL, params=selectors)
     if p.status_code != requests.codes.ok:
         p.raise_for_status()
     return _parse_bus_response(requested_fields, response_type, p.iter_lines())
@@ -71,16 +75,16 @@ def get_bus_times(stop_code, bus_num=None, with_destination=False):
     """
     return arrival times for bus_num at stop_id
     :param stop_code: of bus stop of interest
-    :param bus_num: number of bus, of none if we want data for all busses
+    :param bus_num: number of bus, of none if we want data for all buses
     :return: array of dicts of bus attributes, sorted in order of arrival time
     """
     requested_fields = ['LineName', 'EstimatedTime']
     if with_destination:
         requested_fields.append('DestinationText')
-    filter = {'StopCode1': stop_code}
+    selectors = {'StopCode1': stop_code}
     if bus_num:
-        filter['LineName'] = bus_num
-    response = _get_coundown_data(filter, BUS_PREDICTION, requested_fields)
+        selectors['LineName'] = bus_num
+    response = _get_countdown_data(selectors, BUS_PREDICTION, requested_fields)
     return sorted(response, key=lambda b: int(b['EstimatedTime']))
 
 
@@ -91,8 +95,9 @@ def get_bus_stops(bus_line):
     :return: list of dicts - one dict for each bus stop
     """
     requested_fields = ['StopPointName', 'StopCode1', 'Towards']
-    filter = {'LineName': bus_line}
-    return _get_coundown_data(filter, STOP_ARRAY, requested_fields)
+    selectors = {'LineName': bus_line}
+    return _get_countdown_data(selectors, STOP_ARRAY, requested_fields)
+
 
 def get_bus_stops_near(location):
     """
@@ -102,18 +107,21 @@ def get_bus_stops_near(location):
     """
     geo = geopy.geocoders.GoogleV3()
     _, loc = geo.geocode(location)
-    requested_fields = ['StopPointName', 'StopCode1', 'Towards','Latitude','Longitude']
-    filter = {'Circle': '%g,%g,500' % loc}
-    stops =  _get_coundown_data(filter, STOP_ARRAY, requested_fields)
+    requested_fields = ['StopPointName', 'StopCode1', 'Towards', 'Latitude', 'Longitude']
+    selectors = {'Circle': '%g,%g,500' % loc}
+    stops = _get_countdown_data(selectors, STOP_ARRAY, requested_fields)
+
     def dist(s):
         return geopy.distance.distance(loc, (s['Latitude'], s['Longitude']))
     return sorted(stops, key=dist)
 
-def _write_busses(buses):
+
+def _write_buses(buses):
     for b in buses:
         print "%3s %20s %6s" % (b['LineName'], b['DestinationText'],
                                 ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S')
                                 )
+
 
 def _write_stops(stops):
     for s in stops:
@@ -140,4 +148,4 @@ if __name__ == "__main__":
         _write_stops(get_bus_stops(args.route))
     else:
         buses = get_bus_times(args.stop, args.route, with_destination=True)
-        _write_busses(buses)
+        _write_buses(buses)
