@@ -26,6 +26,16 @@ def minutes_till_bus(ts):
 STOP_ARRAY = 0
 BUS_PREDICTION = 1
 
+RETURNABLE_FIELDS = ['StopPointName', 'StopID', 'StopCode1', 'StopCode2', 'StopPointState',
+                  'StopPointType', 'StopPointIndicator', 'Towards', 'Bearing', 'Latitude',
+                  'Longitude', 'VisitNumber', 'TripID', 'VehicleID', 'RegistrationNumber',
+                  'LineID', 'LineName', 'DirectionID', 'DestinationText', 'DestinationName',
+                  'EstimatedTime', 'MessageUUID', 'MessageText', 'MessageType', 'MessagePriority',
+                  'StartTime', 'ExpireTime', 'BaseVersion']
+
+def _sort_to_tfl_order(fields):
+    fields.sort(key=lambda f: RETURNABLE_FIELDS.index(f))
+
 def _parse_bus_response(requested_fields, response_type, lines):
     """
     Countdown responses consist of a sequence of JSON arrays
@@ -49,6 +59,7 @@ def _parse_bus_response(requested_fields, response_type, lines):
 
 def _get_coundown_data(filter, response_type, requested_fields):
     BUS_BASE_URL = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+    _sort_to_tfl_order(requested_fields)
     filter['ReturnList'] = ','.join(requested_fields)
     p = requests.get(BUS_BASE_URL, params=filter)
     if p.status_code != requests.codes.ok:
@@ -56,14 +67,16 @@ def _get_coundown_data(filter, response_type, requested_fields):
     return _parse_bus_response(requested_fields, response_type, p.iter_lines())
 
 
-def get_bus_times(stop_code, bus_num=None):
+def get_bus_times(stop_code, bus_num=None, with_destination=False):
     """
     return arrival times for bus_num at stop_id
     :param stop_code: of bus stop of interest
     :param bus_num: number of bus, of none if we want data for all busses
     :return: array of dicts of bus attributes, sorted in order of arrival time
     """
-    requested_fields = ['LineName', 'DestinationText', 'EstimatedTime']
+    requested_fields = ['LineName', 'EstimatedTime']
+    if with_destination:
+        requested_fields.append('DestinationText')
     filter = {'StopCode1': stop_code}
     if bus_num:
         filter['LineName'] = bus_num
@@ -126,5 +139,5 @@ if __name__ == "__main__":
             sys.exit('--route argument must be specified')
         _write_stops(get_bus_stops(args.route))
     else:
-        buses = get_bus_times(args.stop, args.route)
+        buses = get_bus_times(args.stop, args.route, with_destination=True)
         _write_busses(buses)

@@ -5,6 +5,7 @@ import argparse
 import next_bus
 
 
+
 # As the raspberry pi comes with no display, I thought that speaking the bus times through the audio port
 # would be a convenient.
 
@@ -50,9 +51,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='say expected arrival times of next buses')
     parser.add_argument('-r', "--route", help="bus route", type=int, default=102)
     parser.add_argument('-s', "--stop", help="bus stop id", default=74640)
-    parser.add_argument('-n', "--num_busses", help="number of busses to report", type=int, default=3)
+    parser.add_argument('-n', "--num_busses", help="number of busses to report", type=int, default=2)
     parser.add_argument('-v', "--voice", help="voice", default='en-f1')
     args = parser.parse_args()
 
-    buses = next_bus.get_bus_times(args.stop, args.route)
+    buses = next_bus.get_bus_times(args.stop, args.route, with_destination=True)
     say_times(buses)
