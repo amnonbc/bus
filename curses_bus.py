@@ -11,6 +11,7 @@ import next_bus
 
 
 
+
 # This script provides a running textual display of the next bus arrivals.
 # It is inspired by the electronic notice boards above some London bus stops.
 # But it uses a 10x5 character screen which has a much squarer shape than the TFL signs.
@@ -63,8 +64,6 @@ def write_time(stdscr):
 def main_loop(args):
     stdscr = init_console()
     num_consqutive_failures = 0
-    if os.getuid() == 0:
-        os.setuid(1000)
     # Maybe better to use gEvent etc. than invent my own timing loop
     while True:
         try:
@@ -75,7 +74,7 @@ def main_loop(args):
             # mini watchdog - attempt to recover when network down
             num_consqutive_failures += 1
             if num_consqutive_failures > 10:
-                os.system('sudo reboot')
+                os.system('reboot')
             elif num_consqutive_failures > 4:
                 os.system('/usr/sbin/service networking restart')
 
