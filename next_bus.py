@@ -5,6 +5,7 @@ import json
 import datetime
 import argparse
 import sys
+import collections
 
 import geopy
 import geopy.geocoders
@@ -99,6 +100,16 @@ def get_bus_stops(bus_line):
     return _get_countdown_data(selectors, STOP_ARRAY, requested_fields)
 
 
+def get_routes_for_stops(stops):
+    requested_fields = ['StopCode1', 'LineName']
+    selectors = {'StopCode1': ','.join(stops)}
+    res = _get_countdown_data(selectors, BUS_PREDICTION, requested_fields)
+    m = collections.defaultdict(set)
+    for r in res:
+        m[r['StopCode1']].add(r['LineName'])
+    return m
+
+
 def get_bus_stops_near(location):
     """
     Returns an list of bus stops near specified location
@@ -110,6 +121,10 @@ def get_bus_stops_near(location):
     requested_fields = ['StopPointName', 'StopCode1', 'Towards', 'Latitude', 'Longitude']
     selectors = {'Circle': '%g,%g,500' % loc}
     stops = _get_countdown_data(selectors, STOP_ARRAY, requested_fields)
+    routes = get_routes_for_stops([s['StopCode1'] for s in stops])
+    for s in stops:
+        if s['StopCode1'] in routes:
+            s['routes'] = routes[s['StopCode1']]
 
     def dist(s):
         return geopy.distance.distance(loc, (s['Latitude'], s['Longitude']))
@@ -127,8 +142,10 @@ def _write_stops(stops):
     for s in stops:
         towards = s['Towards']
         print '%s, %s' % (s['StopCode1'], s['StopPointName']),
+        if s['routes']:
+            print '(%s),' % ', '.join(sorted(s['routes'], key=int)),
         if towards:
-            print ', towards ', towards,
+            print 'towards ', towards,
         print
 
 
