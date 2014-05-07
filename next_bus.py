@@ -140,10 +140,10 @@ def _write_buses(buses):
 def _write_stops(stops):
     for s in stops:
         towards = s['Towards']
-        if s['dist']:
+        if 'dist' in s:
             print '%dm,' % s['dist'].meters,
         print '%s, %s' % (s['StopCode1'], s['StopPointName']),
-        if s['routes']:
+        if 'routes' in s and s['routes']:
             print '(%s),' % ', '.join(sorted(s['routes'], key=int)),
         if towards:
             print 'towards ', towards,
