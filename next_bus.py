@@ -125,10 +125,9 @@ def get_bus_stops_near(location):
     for s in stops:
         if s['StopCode1'] in routes:
             s['routes'] = routes[s['StopCode1']]
+        s['dist'] = geopy.distance.distance(loc, (s['Latitude'], s['Longitude']))
 
-    def dist(s):
-        return geopy.distance.distance(loc, (s['Latitude'], s['Longitude']))
-    return sorted(stops, key=dist)
+    return sorted(stops, key=lambda s: s['dist'])
 
 
 def _write_buses(buses):
@@ -141,7 +140,7 @@ def _write_buses(buses):
 def _write_stops(stops):
     for s in stops:
         towards = s['Towards']
-        print '%s, %s' % (s['StopCode1'], s['StopPointName']),
+        print '%dm, %s, %s' % ((s['dist'].meters), s['StopCode1'], s['StopPointName']),
         if s['routes']:
             print '(%s),' % ', '.join(sorted(s['routes'], key=int)),
         if towards:
