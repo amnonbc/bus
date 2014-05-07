@@ -1,8 +1,11 @@
+#!/usr/bin/python
+
 import datetime
 import subprocess
 import argparse
 
 import next_bus
+
 
 
 
@@ -45,7 +48,7 @@ def say_times(buses):
         bus = buses[0]
         say('The next %s bus to %s is %s.' % (int2bus(bus['LineName']), bus['DestinationText'],
                                           expected_to_string(bus['EstimatedTime'])))
-        for bus in buses[1:args.num_busses]:
+        for bus in buses[1:args.num_buses]:
             say('And the one after that is %s.' % expected_to_string(bus['EstimatedTime']))
 
 if __name__ == "__main__":
