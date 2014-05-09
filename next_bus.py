@@ -86,7 +86,9 @@ def get_bus_times(stop_code, bus_num=None, with_destination=False):
     if bus_num:
         selectors['LineName'] = bus_num
     response = _get_countdown_data(selectors, BUS_PREDICTION, requested_fields)
-    return sorted(response, key=lambda b: int(b['EstimatedTime']))
+    for b in response:
+        b['when'] = ms_timestamp_to_date(b['EstimatedTime'])
+    return sorted(response, key=lambda b: b['when'])
 
 
 def get_bus_stops(bus_line):
@@ -132,9 +134,7 @@ def get_bus_stops_near(location):
 
 def _write_buses(buses):
     for b in buses:
-        print "%3s %20s %6s" % (b['LineName'], b['DestinationText'],
-                                ms_timestamp_to_date(b['EstimatedTime']).strftime('%H:%M:%S')
-                                )
+        print "%3s %20s %6s" % (b['LineName'], b['DestinationText'], b['when'].strftime('%H:%M:%S'))
 
 
 def _write_stops(stops):
