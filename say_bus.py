@@ -10,6 +10,7 @@ import next_bus
 
 
 
+
 # As the raspberry pi comes with no display, I thought that speaking the bus times through the audio port
 # would be a convenient.
 
@@ -32,8 +33,8 @@ def int2bus(route):
     return ' '.join(res)
 
 
-def expected_to_string(usecs):
-    minutes = int(next_bus.minutes_till_bus(usecs))
+def expected_to_string(tm):
+    minutes = int((tm - datetime.datetime.now()).total_seconds()/60)
     if minutes == 1:
         return 'in 1 minute'
     elif minutes:
@@ -47,9 +48,9 @@ def say_times(buses):
     if buses:
         bus = buses[0]
         say('The next %s bus to %s is %s.' % (int2bus(bus['LineName']), bus['DestinationText'],
-                                          expected_to_string(bus['EstimatedTime'])))
+                                          expected_to_string(bus['when'])))
         for bus in buses[1:args.num_buses]:
-            say('And the one after that is %s.' % expected_to_string(bus['EstimatedTime']))
+            say('And the one after that is %s.' % expected_to_string(bus['when']))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='say expected arrival times of next buses')
