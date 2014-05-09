@@ -17,12 +17,6 @@ def ms_timestamp_to_date(ts):
     return datetime.datetime.fromtimestamp(int(ts)/1000)
 
 
-def minutes_till_bus(ts):
-    t = ms_timestamp_to_date(ts)
-    n = datetime.datetime.now()
-    delta = t-n
-    return delta.total_seconds()/60
-
 # response types from TFL API
 STOP_ARRAY = 0
 BUS_PREDICTION = 1
