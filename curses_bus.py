@@ -13,6 +13,7 @@ import next_bus
 
 
 
+
 # This script provides a running textual display of the next bus arrivals.
 # It is inspired by the electronic notice boards above some London bus stops.
 # But it uses a 10x5 character screen which has a much squarer shape than the TFL signs.
@@ -96,7 +97,9 @@ def main_loop(args):
             # polling delay
             now = datetime.datetime.now()
             # delete buses which have gone
-            buses = [ b for b in buses if b['when'] > now]
+            while buses[0]['when'] > now:
+                buses.pop(0)
+                stdscr.clear()
             write_console(stdscr, buses, args.num_busses, status)
             time.sleep(1)
 
