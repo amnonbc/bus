@@ -17,6 +17,7 @@ import next_bus
 
 
 
+
 # This script provides a running textual display of the next bus arrivals.
 # It is inspired by the electronic notice boards above some London bus stops.
 # But it uses a 10x5 character screen which has a much squarer shape than the TFL signs.
@@ -45,8 +46,9 @@ def unblank_screen():
 
 
 def expected_short(delta):
-    minutes, seconds = divmod(delta.total_seconds(), 60)
-    if not minutes:
+    ts = delta.total_seconds()
+    minutes, seconds = divmod(ts, 60)
+    if ts < 15:
         return 'Due'
     if minutes < 0:
         return 'Gone'
