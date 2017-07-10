@@ -20,7 +20,7 @@ def expected_short(delta):
     return '%2d:%02d' % (minutes, seconds)
 
 
-def write_console(background, buses, nlines, status):
+def write_console(background, buses, nlines, status, shift=0):
     font = pygame.font.Font(None, 50)
     background.fill((255, 255, 255,  255))
 
@@ -28,7 +28,9 @@ def write_console(background, buses, nlines, status):
     for i, b in enumerate(buses[0:nlines]):
         mins_left = expected_short(b['when'] - now)
         s = "%3s %6s" % (b['LineName'], mins_left)
-        upd(background, s, i)
+        upd(background, s, i, shift)
+    write_status(background, status)
+
 
 def write_time(background):
     font = pygame.font.Font(None, 60)
@@ -41,15 +43,21 @@ def write_time(background):
     background.blit(text, textpos)
 
 
-def write_status(stdscr, stat):
-    stdscr.addstr(3, 0, stat[0])
+def write_status(background, s):
+    font = pygame.font.Font(None, 60)
 
-def upd(background, s, n):
+    text = font.render(s, 1, (10, 10, 10))
+    textpos = text.get_rect()
+    textpos.bottom = background.get_rect().h
+    background.blit(text, textpos)
+
+
+def upd(background, s, n, shift):
     font = pygame.font.Font(None, 180)
     text = font.render(s, 1, (10, 10, 10))
     textpos = text.get_rect()
     #textpos.centerx = background.get_rect().centerx
-    textpos.top = 160*n
+    textpos.top = 160*n - shift
     background.blit(text, textpos)
 
     # Blit everything to the screen
@@ -66,7 +74,10 @@ def main_loop(args, background, screen):
         try:
             if args.test:
                 raise Exception('testing')
-            #write_status(background, 'U')
+            #write_console(background, buses, args.num_busses, status)
+            write_status(background, 'U')
+            screen.blit(background, (0, 0))
+            pygame.display.flip()
             buses = next_bus.get_bus_times(args.stop, args.route)
             status = ' '
             num_consqutive_failures = 0
@@ -82,6 +93,11 @@ def main_loop(args, background, screen):
             now = datetime.datetime.now()
             # delete buses which have gone
             if buses and buses[0]['when'] < now:
+                for shift in range(159):
+                    write_console(background, buses, args.num_busses + 1, status, shift)
+                    write_time(background)
+                    screen.blit(background, (0, 0))
+                    pygame.display.flip()
                 buses.pop(0)
             write_console(background, buses, args.num_busses, status)
             write_time(background)
@@ -110,17 +126,6 @@ def main():
     background = pygame.Surface(screen.get_size())
     background = background.convert()
     background.fill((250, 250, 250))
-
-    # Display some text
-    font = pygame.font.Font(None, 72)
-    text = font.render("Bus", 1, (10, 10, 10))
-    textpos = text.get_rect()
-    textpos.centerx = background.get_rect().centerx
-    background.blit(text, textpos)
-
-    # Blit everything to the screen
-    screen.blit(background, (0, 0))
-    pygame.display.flip()
 
     # Event loop
     main_loop(args, background, screen)
