@@ -30,6 +30,7 @@ def write_console(background, buses, nlines, status, shift=0):
         s = "%3s %6s" % (b['LineName'], mins_left)
         upd(background, s, i, shift)
     write_status(background, status)
+    write_time(background)
 
 
 def write_time(background):
@@ -49,6 +50,7 @@ def write_status(background, s):
     text = font.render(s, 1, (10, 10, 10))
     textpos = text.get_rect()
     textpos.bottom = background.get_rect().h
+    textpos.left = 20
     background.blit(text, textpos)
 
 
@@ -58,6 +60,7 @@ def upd(background, s, n, shift):
     textpos = text.get_rect()
     #textpos.centerx = background.get_rect().centerx
     textpos.top = 160*n - shift
+    textpos.left = 20
     background.blit(text, textpos)
 
     # Blit everything to the screen
@@ -74,14 +77,17 @@ def main_loop(args, background, screen):
         try:
             if args.test:
                 raise Exception('testing')
-            #write_console(background, buses, args.num_busses, status)
             write_status(background, 'U')
             screen.blit(background, (0, 0))
             pygame.display.flip()
-            buses = next_bus.get_bus_times(args.stop, args.route)
+            now = datetime.datetime.now()
+            if now.hour < 9:
+                route = args.route
+            else:
+                route = 0
+            buses = next_bus.get_bus_times(args.stop, route)
             status = ' '
             num_consqutive_failures = 0
-            #stdscr.clear()
         except:
             # mini watchdog - attempt to recover when network down
             num_consqutive_failures += 1
@@ -95,12 +101,10 @@ def main_loop(args, background, screen):
             if buses and buses[0]['when'] < now:
                 for shift in range(159):
                     write_console(background, buses, args.num_busses + 1, status, shift)
-                    write_time(background)
                     screen.blit(background, (0, 0))
                     pygame.display.flip()
                 buses.pop(0)
             write_console(background, buses, args.num_busses, status)
-            write_time(background)
             screen.blit(background, (0, 0))
             pygame.display.flip()
             time.sleep(1)
