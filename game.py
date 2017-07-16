@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import os
 import signal
 import sys
 import time
@@ -11,9 +12,11 @@ from pygame.locals import *
 
 import next_bus
 
+RED = (255, 0, 0)
+
 WHITE = (250, 250, 250)
 
-RED = (10, 0, 10)
+BLACK = (10, 0, 10)
 
 
 def expected_short(delta):
@@ -51,7 +54,7 @@ def write_time(background):
 
 def write_status(background, s):
 
-    text = STATUS_FONT.render(s, 1, (255, 0, 0))
+    text = STATUS_FONT.render(s, 1, RED)
     textpos = text.get_rect()
     textpos.bottom = background.get_rect().h
     textpos.left = 20
@@ -59,7 +62,7 @@ def write_status(background, s):
 
 
 def upd(background, s, n, shift):
-    text = BIG_FONT.render(s, 1, RED)
+    text = BIG_FONT.render(s, 1, BLACK)
     textpos = text.get_rect()
     h = textpos.h
     textpos.top = n * h  - shift
@@ -134,6 +137,8 @@ def signal_handler(signal, frame):
 
 
 if __name__ == '__main__':
+    if not os.getenv("DISPLAY"):
+        os.putenv("SDL_VIDEODRIVER", "fbcon")
     pygame.init()
     pygame.display.init()
     pygame.font.init()
