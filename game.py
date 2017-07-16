@@ -2,12 +2,18 @@
 
 import argparse
 import datetime
+import signal
+import sys
 import time
 
 import pygame
 from pygame.locals import *
 
 import next_bus
+
+WHITE = (250, 250, 250)
+
+RED = (10, 0, 10)
 
 
 def expected_short(delta):
@@ -21,7 +27,6 @@ def expected_short(delta):
 
 
 def write_console(background, buses, nlines, status, shift=0):
-    font = pygame.font.Font(None, 50)
     background.fill((255, 255, 255,  255))
 
     now = datetime.datetime.now()
@@ -31,13 +36,13 @@ def write_console(background, buses, nlines, status, shift=0):
         upd(background, s, i, shift)
     write_status(background, status)
     write_time(background)
+    screen.blit(background, (0, 0))
+    pygame.display.flip()
 
 
 def write_time(background):
-    font = pygame.font.Font(None, 60)
-
     s = datetime.datetime.now().strftime('%H:%M:%S')
-    text = font.render(s, 1, (10, 10, 10))
+    text = STATUS_FONT.render(s, 1, (10, 10, 10))
     textpos = text.get_rect()
     textpos.right = background.get_rect().w
     textpos.bottom = background.get_rect().h
@@ -45,9 +50,8 @@ def write_time(background):
 
 
 def write_status(background, s):
-    font = pygame.font.Font(None, 60)
 
-    text = font.render(s, 1, (10, 10, 10))
+    text = STATUS_FONT.render(s, 1, (255, 0, 0))
     textpos = text.get_rect()
     textpos.bottom = background.get_rect().h
     textpos.left = 20
@@ -55,15 +59,13 @@ def write_status(background, s):
 
 
 def upd(background, s, n, shift):
-    font = pygame.font.Font(None, 180)
-    text = font.render(s, 1, (10, 10, 10))
+    text = BIG_FONT.render(s, 1, RED)
     textpos = text.get_rect()
-    #textpos.centerx = background.get_rect().centerx
-    textpos.top = 160*n - shift
+    h = textpos.h
+    textpos.top = n * h  - shift
     textpos.left = 20
     background.blit(text, textpos)
 
-    # Blit everything to the screen
 
 def main_loop(args, background, screen):
     num_consqutive_failures = 0
@@ -101,12 +103,8 @@ def main_loop(args, background, screen):
             if buses and buses[0]['when'] < now:
                 for shift in range(159):
                     write_console(background, buses, args.num_busses + 1, status, shift)
-                    screen.blit(background, (0, 0))
-                    pygame.display.flip()
                 buses.pop(0)
             write_console(background, buses, args.num_busses, status)
-            screen.blit(background, (0, 0))
-            pygame.display.flip()
             time.sleep(1)
 
 
@@ -120,27 +118,33 @@ def main():
     parser.add_argument('-t', "--test", help="test failure recover", action="store_true")
     args = parser.parse_args()
 
-    # Initialise screen
-    pygame.init()
-    screen = pygame.display.set_mode((800,480))
-    pygame.display.toggle_fullscreen()
-    pygame.display.set_caption('bus')
-
     # Fill background
     background = pygame.Surface(screen.get_size())
     background = background.convert()
-    background.fill((250, 250, 250))
+    background.fill(WHITE)
 
     # Event loop
     main_loop(args, background, screen)
-    # while 1:
-    #     for event in pygame.event.get():
-    #         if event.type == QUIT:
-    #             return
-    #
-    #     upd(background)
-    #     screen.blit(background, (0, 0))
-    #     pygame.display.flip()
 
 
-if __name__ == '__main__': main()
+def signal_handler(signal, frame):
+  time.sleep(1)
+  pygame.quit()
+  sys.exit(0)
+
+
+if __name__ == '__main__':
+    pygame.init()
+    pygame.display.init()
+    pygame.font.init()
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    info = pygame.display.Info()
+    size = (info.current_w, info.current_h)
+    STATUS_FONT = pygame.font.Font(None, 90)
+    BIG_FONT = pygame.font.Font(None, info.current_h/3 + 20)
+
+    screen = pygame.display.set_mode(size)
+    pygame.display.toggle_fullscreen()
+    main()
+
