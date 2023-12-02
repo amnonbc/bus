@@ -64,13 +64,15 @@ func updateBuses(c *fyne.Container, busses []Bus) {
 	c.Refresh()
 }
 
+const tflBase = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+
 func main() {
 	stop := flag.Int("stop", 74640, "bus stop code")
 	flag.Parse()
 
 	myApp := app.New()
 	myWindow := myApp.NewWindow("List Data")
-	busses, err := GetCountdownData(*stop)
+	busses, err := GetCountdownData(tflBase, *stop)
 	if err != nil {
 		panic(err)
 	}
@@ -88,7 +90,7 @@ func main() {
 	go func() {
 		tick := time.NewTicker(30 * time.Second)
 		for range tick.C {
-			busses, err = GetCountdownData(*stop)
+			busses, err = GetCountdownData(tflBase, *stop)
 			if err != nil {
 				log.Println(err)
 			}

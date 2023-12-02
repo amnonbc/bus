@@ -19,9 +19,9 @@ type Bus struct {
 	ETA    time.Time
 }
 
-func GetCountdownData(stop int) ([]Bus, error) {
+func GetCountdownData(baseUrl string, stop int) ([]Bus, error) {
 	buses := make([]Bus, 0, 3)
-	u, err := url.Parse("http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1")
+	u, err := url.Parse(baseUrl)
 	if err != nil {
 		panic(err)
 	}
@@ -36,7 +36,7 @@ func GetCountdownData(stop int) ([]Bus, error) {
 
 	r, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Println(err)
+		return nil, err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 {
