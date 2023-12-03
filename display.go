@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/widget"
 )
 
 func sb(s string) *canvas.Text {
@@ -55,7 +54,9 @@ func updateBuses(c *fyne.Container, busses []Bus) {
 		}
 
 		w = append(w, sb(b.Number))
-		w = append(w, sb(fmtDelay(delay)))
+		eta := sb(fmtDelay(delay))
+		eta.Alignment = fyne.TextAlignTrailing
+		w = append(w, eta)
 	}
 	c.RemoveAll()
 	for _, ww := range w {
@@ -65,6 +66,10 @@ func updateBuses(c *fyne.Container, busses []Bus) {
 }
 
 const tflBase = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+
+func tm() string {
+	return time.Now().Format("3:04:05")
+}
 
 func main() {
 	stop := flag.Int("stop", 74640, "bus stop code")
@@ -80,9 +85,14 @@ func main() {
 	ll := container.New(
 		layout.NewGridLayout(2),
 	)
+	bottom := sb(tm())
+	bottom.TextSize = 40
+	bottom.Alignment = fyne.TextAlignTrailing
+
+	go clockUpdate(bottom)
 	border := container.New(layout.NewBorderLayout(
-		widget.NewSeparator(), widget.NewSeparator(),
-		widget.NewSeparator(), widget.NewSeparator()), ll)
+		layout.NewSpacer(), bottom,
+		layout.NewSpacer(), layout.NewSpacer()), ll, bottom)
 	myWindow.SetContent(border)
 
 	go loop(ll, &busses)
@@ -100,4 +110,12 @@ func main() {
 		myWindow.SetFullScreen(true)
 	}
 	myWindow.ShowAndRun()
+}
+
+func clockUpdate(bottom *canvas.Text) {
+	tick := time.NewTicker(time.Second)
+	for range tick.C {
+		bottom.Text = tm()
+		bottom.Refresh()
+	}
 }
