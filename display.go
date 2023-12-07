@@ -85,11 +85,24 @@ func main() {
 	ll := container.New(
 		layout.NewGridLayout(2),
 	)
-	bottom := sb(tm())
-	bottom.TextSize = 40
-	bottom.Alignment = fyne.TextAlignTrailing
+	bottomRight := sb(tm())
+	bottomRight.TextSize = 40
+	bottomRight.Alignment = fyne.TextAlignTrailing
 
-	go clockUpdate(bottom)
+	w, err := GetWeather()
+	if err != nil {
+		log.Println(err)
+	}
+	bottomLeft := sb(w.String())
+	bottomLeft.TextSize = 40
+
+	bottom := container.New(
+		layout.NewGridLayout(2), bottomLeft, bottomRight,
+	)
+
+	go weatherUpdate(bottomLeft)
+
+	go clockUpdate(bottomRight)
 	border := container.New(layout.NewBorderLayout(
 		layout.NewSpacer(), bottom,
 		layout.NewSpacer(), layout.NewSpacer()), ll, bottom)
@@ -117,5 +130,18 @@ func clockUpdate(bottom *canvas.Text) {
 	for range tick.C {
 		bottom.Text = tm()
 		bottom.Refresh()
+	}
+}
+
+func weatherUpdate(w *canvas.Text) {
+	tick := time.NewTicker(30 * time.Minute)
+	for range tick.C {
+		weather, err := GetWeather()
+		if err != nil {
+			w.Text = err.Error()
+		} else {
+			w.Text = weather.String()
+		}
+		w.Refresh()
 	}
 }
