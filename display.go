@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"log"
 	"runtime"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -26,45 +27,90 @@ func sb(s string) *canvas.Text {
 	return c
 }
 
-func busDisplayLoop(w *fyne.Container, busses *[]Bus) {
+type timeTable struct {
+	sync.Mutex
+	stopID int
+	c      *fyne.Container
+	busses []Bus
+}
+
+func newTimeTable(stopID int) *timeTable {
+	c := container.New(
+		layout.NewGridLayout(2),
+	)
+	return &timeTable{
+		stopID: stopID,
+		c:      c}
+}
+
+func (t *timeTable) start() {
+	t.download()
+	go t.displayLoop()
+	go t.downloadLoop()
+}
+
+func (t *timeTable) displayLoop() {
 	ticker := time.NewTicker(time.Second)
 	for range ticker.C {
-		updateBuses(w, *busses)
+		t.draw()
 	}
 }
 
-func fmtDelay(delay time.Duration) string {
-	s := int(delay.Seconds())
+type delay time.Duration
+
+func (d delay) String() string {
+	s := int(time.Duration(d).Seconds())
 	m := s / 60
 	s -= 60 * m
 	return fmt.Sprintf("%d:%02d", m, s)
 }
 
-func updateBuses(c *fyne.Container, busses []Bus) {
+func fromTime(t time.Time) delay {
+	return delay(time.Until(t).Round(time.Second))
+}
+
+func (t *timeTable) draw() {
 	var w []fyne.CanvasObject
-	for _, b := range busses {
+	t.Lock()
+	defer t.Unlock()
+	for _, b := range t.busses {
 		if len(w) > 4 {
 			break
 		}
-		sb(b.Number)
-		delay := time.Until(b.ETA).Round(time.Second)
+		delay := fromTime(b.ETA)
 		if delay < 0 {
 			continue
 		}
 
 		w = append(w, sb(b.Number))
-		eta := sb(fmtDelay(delay))
+		eta := sb(delay.String())
 		eta.Alignment = fyne.TextAlignTrailing
 		w = append(w, eta)
 	}
-	c.RemoveAll()
+	t.c.RemoveAll()
 	for _, ww := range w {
-		c.Add(ww)
+		t.c.Add(ww)
 	}
-	c.Refresh()
+	t.c.Refresh()
 }
 
-const tflBase = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+func (t *timeTable) download() {
+	b, err := GetCountdownData(tflBase, t.stopID)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	t.Lock()
+	t.busses = b
+	t.Unlock()
+}
+
+func (t *timeTable) downloadLoop() {
+	tick := time.NewTicker(30 * time.Second)
+	for range tick.C {
+		t.download()
+	}
+}
 
 func tm() string {
 	return time.Now().Format("3:04:05")
@@ -76,14 +122,7 @@ func main() {
 
 	myApp := app.New()
 	myWindow := myApp.NewWindow("List Data")
-	busses, err := GetCountdownData(tflBase, *stop)
-	if err != nil {
-		panic(err)
-	}
 
-	ll := container.New(
-		layout.NewGridLayout(2),
-	)
 	bottomRight := sb(tm())
 	bottomRight.TextSize = 40
 	bottomRight.Alignment = fyne.TextAlignTrailing
@@ -99,22 +138,17 @@ func main() {
 	go weatherLoop(bottomLeft)
 
 	go clockUpdate(bottomRight)
+
+	centre := newTimeTable(*stop)
+	centre.start()
+
 	border := container.New(layout.NewBorderLayout(
 		layout.NewSpacer(), bottom,
-		layout.NewSpacer(), layout.NewSpacer()), ll, bottom)
+		layout.NewSpacer(), layout.NewSpacer()), centre.c, bottom)
 	myWindow.SetContent(border)
 
-	go busDisplayLoop(ll, &busses)
+	go centre.displayLoop()
 
-	go func() {
-		tick := time.NewTicker(30 * time.Second)
-		for range tick.C {
-			busses, err = GetCountdownData(tflBase, *stop)
-			if err != nil {
-				log.Println(err)
-			}
-		}
-	}()
 	if runtime.GOOS == "linux" {
 		myWindow.SetFullScreen(true)
 	}

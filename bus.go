@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const tflBase = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+
 type resp []any
 
 type Bus struct {
