@@ -26,8 +26,7 @@ func sb(s string) *canvas.Text {
 	return c
 }
 
-func loop(w *fyne.Container, busses *[]Bus) {
-
+func busDisplayLoop(w *fyne.Container, busses *[]Bus) {
 	ticker := time.NewTicker(time.Second)
 	for range ticker.C {
 		updateBuses(w, *busses)
@@ -89,18 +88,15 @@ func main() {
 	bottomRight.TextSize = 40
 	bottomRight.Alignment = fyne.TextAlignTrailing
 
-	w, err := GetWeather()
-	if err != nil {
-		log.Println(err)
-	}
-	bottomLeft := sb(w.String())
+	bottomLeft := sb("weather")
 	bottomLeft.TextSize = 40
+	weatherUpdate(bottomLeft)
 
 	bottom := container.New(
 		layout.NewGridLayout(2), bottomLeft, bottomRight,
 	)
 
-	go weatherUpdate(bottomLeft)
+	go weatherLoop(bottomLeft)
 
 	go clockUpdate(bottomRight)
 	border := container.New(layout.NewBorderLayout(
@@ -108,7 +104,7 @@ func main() {
 		layout.NewSpacer(), layout.NewSpacer()), ll, bottom)
 	myWindow.SetContent(border)
 
-	go loop(ll, &busses)
+	go busDisplayLoop(ll, &busses)
 
 	go func() {
 		tick := time.NewTicker(30 * time.Second)
@@ -133,15 +129,19 @@ func clockUpdate(bottom *canvas.Text) {
 	}
 }
 
-func weatherUpdate(w *canvas.Text) {
+func weatherLoop(w *canvas.Text) {
 	tick := time.NewTicker(30 * time.Minute)
 	for range tick.C {
-		weather, err := GetWeather()
-		if err != nil {
-			w.Text = err.Error()
-		} else {
-			w.Text = weather.String()
-		}
-		w.Refresh()
+		weatherUpdate(w)
 	}
+}
+
+func weatherUpdate(w *canvas.Text) {
+	weather, err := GetWeather()
+	if err != nil {
+		w.Text = err.Error()
+	} else if len(weather) > 0 {
+		w.Text = weather[0].String()
+	}
+	w.Refresh()
 }

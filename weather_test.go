@@ -9,5 +9,6 @@ import (
 func TestGetWeather(t *testing.T) {
 	w, err := GetWeather()
 	require.NoError(t, err)
-	t.Log(w.String())
+	require.NotEmpty(t, w)
+	t.Log(w[0].String())
 }
