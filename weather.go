@@ -33,6 +33,12 @@ type Weather struct {
 	Link       string `json:"Link"`
 }
 
+type ErrResponse struct {
+	Code      string `json:"Code"`
+	Message   string `json:"Message"`
+	Reference string `json:"Reference"`
+}
+
 var (
 	API_KEY  = "16cnkfx4543vJI1mMnV7RmXAmYAnQyrT"
 	LOCATION = "49505_PC"
@@ -56,13 +62,20 @@ func GetWeather() ([]Weather, error) {
 	r, err := http.Get(uu.String())
 	if err != nil {
 		log.Println(err)
+
 		return nil, err
 	}
 	defer r.Body.Close()
+	left := r.Header.Get("RateLimit-Remaining")
+	log.Println("weather update returned", r.Status, "remaining", left)
 	if r.StatusCode != 200 {
-		return nil, fmt.Errorf("Bad HTTP status %d %s", r.StatusCode, r.Status)
+		var resp ErrResponse
+		err = json.NewDecoder(r.Body).Decode(&resp)
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf(resp.Message)
 	}
-
 	err = json.NewDecoder(r.Body).Decode(&w)
 	return w, err
 }

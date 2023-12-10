@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log"
 	"runtime"
 	"time"
 
@@ -64,7 +65,7 @@ func clockUpdate(bottom *canvas.Text) {
 }
 
 func weatherLoop(w *canvas.Text) {
-	tick := time.NewTicker(30 * time.Minute)
+	tick := time.NewTicker(time.Hour)
 	for range tick.C {
 		weatherUpdate(w)
 	}
@@ -73,7 +74,8 @@ func weatherLoop(w *canvas.Text) {
 func weatherUpdate(w *canvas.Text) {
 	weather, err := GetWeather()
 	if err != nil {
-		w.Text = err.Error()
+		log.Println("could not get weather", err)
+		w.Text = "Weather Error"
 	} else if len(weather) > 0 {
 		w.Text = weather[0].String()
 	}
