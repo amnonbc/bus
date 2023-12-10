@@ -12,3 +12,9 @@ func TestGetWeather(t *testing.T) {
 	require.NotEmpty(t, w)
 	t.Log(w[0].String())
 }
+
+func TestGetLocationCode(t *testing.T) {
+	c, err := GetLocationCode("N2 9LU")
+	require.NoError(t, err)
+	t.Log(c)
+}

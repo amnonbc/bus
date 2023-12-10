@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -40,8 +41,9 @@ type ErrResponse struct {
 }
 
 var (
-	API_KEY  = "16cnkfx4543vJI1mMnV7RmXAmYAnQyrT"
-	LOCATION = "49505_PC"
+	API_KEY     = "16cnkfx4543vJI1mMnV7RmXAmYAnQyrT"
+	locationKey string
+	postcode    = "N2 9LU"
 )
 
 func (w Weather) String() string {
@@ -49,8 +51,15 @@ func (w Weather) String() string {
 }
 
 func GetWeather() ([]Weather, error) {
+	if locationKey == "" {
+		var err error
+		locationKey, err = GetLocationCode(postcode)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var w []Weather
-	u := "https://dataservice.accuweather.com/currentconditions/v1/" + LOCATION
+	u := "https://dataservice.accuweather.com/currentconditions/v1/" + locationKey
 	uu, err := url.Parse(u)
 	if err != nil {
 		panic(err)
@@ -78,4 +87,47 @@ func GetWeather() ([]Weather, error) {
 	}
 	err = json.NewDecoder(r.Body).Decode(&w)
 	return w, err
+}
+
+type locResp struct {
+	Key string
+}
+
+func GetLocationCode(postcode string) (string, error) {
+	var w []locResp
+	u := "http://dataservice.accuweather.com/locations/v1/postalcodes/search"
+	uu, err := url.Parse(u)
+	if err != nil {
+		panic(err)
+	}
+	args := uu.Query()
+	args.Add("apikey", API_KEY)
+	args.Add("q", postcode)
+	uu.RawQuery = args.Encode()
+
+	r, err := http.Get(uu.String())
+	if err != nil {
+		log.Println(err)
+
+		return "", err
+	}
+	defer r.Body.Close()
+	left := r.Header.Get("RateLimit-Remaining")
+	log.Println("weather update returned", r.Status, "remaining", left)
+	if r.StatusCode != 200 {
+		var resp ErrResponse
+		err = json.NewDecoder(r.Body).Decode(&resp)
+		if err != nil {
+			return "", err
+		}
+		return "", fmt.Errorf(resp.Message)
+	}
+	err = json.NewDecoder(r.Body).Decode(&w)
+	if err != nil {
+		return "", err
+	}
+	if len(w) == 0 {
+		return "", errors.New("no results")
+	}
+	return w[0].Key, nil
 }
