@@ -2,11 +2,7 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"image/color"
-	"log"
 	"runtime"
-	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -15,102 +11,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 )
-
-func sb(s string) *canvas.Text {
-	colour := color.Black
-	if runtime.GOOS == "linux" {
-		colour = color.White
-	}
-	c := canvas.NewText(s, colour)
-	c.TextSize = 100
-	c.TextStyle.Bold = true
-	return c
-}
-
-type timeTable struct {
-	sync.Mutex
-	stopID int
-	c      *fyne.Container
-	busses []Bus
-}
-
-func newTimeTable(stopID int) *timeTable {
-	c := container.New(
-		layout.NewGridLayout(2),
-	)
-	return &timeTable{
-		stopID: stopID,
-		c:      c}
-}
-
-func (t *timeTable) start() {
-	t.download()
-	go t.displayLoop()
-	go t.downloadLoop()
-}
-
-func (t *timeTable) displayLoop() {
-	ticker := time.NewTicker(time.Second)
-	for range ticker.C {
-		t.draw()
-	}
-}
-
-type delay time.Duration
-
-func (d delay) String() string {
-	s := int(time.Duration(d).Seconds())
-	m := s / 60
-	s -= 60 * m
-	return fmt.Sprintf("%d:%02d", m, s)
-}
-
-func fromTime(t time.Time) delay {
-	return delay(time.Until(t).Round(time.Second))
-}
-
-func (t *timeTable) draw() {
-	var w []fyne.CanvasObject
-	t.Lock()
-	defer t.Unlock()
-	for _, b := range t.busses {
-		if len(w) > 4 {
-			break
-		}
-		delay := fromTime(b.ETA)
-		if delay < 0 {
-			continue
-		}
-
-		w = append(w, sb(b.Number))
-		eta := sb(delay.String())
-		eta.Alignment = fyne.TextAlignTrailing
-		w = append(w, eta)
-	}
-	t.c.RemoveAll()
-	for _, ww := range w {
-		t.c.Add(ww)
-	}
-	t.c.Refresh()
-}
-
-func (t *timeTable) download() {
-	b, err := GetCountdownData(tflBase, t.stopID)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	t.Lock()
-	t.busses = b
-	t.Unlock()
-}
-
-func (t *timeTable) downloadLoop() {
-	tick := time.NewTicker(30 * time.Second)
-	for range tick.C {
-		t.download()
-	}
-}
 
 func tm() string {
 	return time.Now().Format("3:04:05")
@@ -123,11 +23,11 @@ func main() {
 	myApp := app.New()
 	myWindow := myApp.NewWindow("List Data")
 
-	bottomRight := sb(tm())
+	bottomRight := text(tm())
 	bottomRight.TextSize = 40
 	bottomRight.Alignment = fyne.TextAlignTrailing
 
-	bottomLeft := sb("weather")
+	bottomLeft := text("weather")
 	bottomLeft.TextSize = 40
 	weatherUpdate(bottomLeft)
 
