@@ -113,7 +113,7 @@ func GetLocationCode(postcode string) (string, error) {
 	}
 	defer r.Body.Close()
 	left := r.Header.Get("RateLimit-Remaining")
-	log.Println("weather update returned", r.Status, "remaining", left)
+	log.Println("GetLocationCode returned", r.Status, "remaining", left)
 	if r.StatusCode != 200 {
 		var resp ErrResponse
 		err = json.NewDecoder(r.Body).Decode(&resp)
