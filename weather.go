@@ -47,7 +47,7 @@ var (
 )
 
 func (w Weather) String() string {
-	return fmt.Sprintf("%s %v%s", w.WeatherText, w.Temperature.Metric.Value, w.Temperature.Metric.Unit)
+	return fmt.Sprintf("%s %v℃", w.WeatherText, w.Temperature.Metric.Value)
 }
 
 func GetWeather() ([]Weather, error) {
