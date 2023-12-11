@@ -29,7 +29,7 @@ func main() {
 	bottomRight.Alignment = fyne.TextAlignTrailing
 
 	bottomLeft := text("weather")
-	bottomLeft.TextSize = 40
+	bottomLeft.TextSize = 32
 	weatherUpdate(bottomLeft)
 
 	bottom := container.New(
