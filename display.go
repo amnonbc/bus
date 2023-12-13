@@ -78,6 +78,8 @@ func weatherUpdate(w *canvas.Text) {
 		w.Text = "Weather Error"
 	} else if len(weather) > 0 {
 		w.Text = weather[0].String()
+		log.Println("setting bottom left to ", w.Text)
 	}
+	w.Show()
 	w.Refresh()
 }
