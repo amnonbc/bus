@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const tflBase = "http://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+const tflBase = "https://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
 
 type resp []any
 
