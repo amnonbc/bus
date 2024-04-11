@@ -1,10 +1,10 @@
 module bus
 
-go 1.22.0
+go 1.22.2
 
 require (
 	fyne.io/fyne/v2 v2.4.4
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 )
 
 require (
