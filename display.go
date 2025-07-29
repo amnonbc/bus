@@ -60,7 +60,12 @@ func clockUpdate(bottom *canvas.Text) {
 	tick := time.NewTicker(time.Second)
 	for range tick.C {
 		bottom.Text = tm()
-		bottom.Refresh()
+		go func() {
+			fyne.Do(func() {
+				bottom.Refresh()
+			})
+		}()
+
 	}
 }
 

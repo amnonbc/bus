@@ -83,7 +83,7 @@ func GetWeather() ([]Weather, error) {
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf(resp.Message)
+		return nil, errors.New(resp.Message)
 	}
 	err = json.NewDecoder(r.Body).Decode(&w)
 	return w, err
@@ -120,7 +120,7 @@ func GetLocationCode(postcode string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "", fmt.Errorf(resp.Message)
+		return "", errors.New(resp.Message)
 	}
 	err = json.NewDecoder(r.Body).Decode(&w)
 	if err != nil {
