@@ -89,7 +89,11 @@ func (t *timeTable) draw() {
 	for _, ww := range w {
 		t.c.Add(ww)
 	}
-	t.c.Refresh()
+	go func() {
+		fyne.Do(func() {
+			t.c.Refresh()
+		})
+	}()
 }
 
 func (t *timeTable) download() {
