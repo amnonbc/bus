@@ -7,33 +7,59 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 type Weather struct {
-	LocalObservationDateTime time.Time `json:"LocalObservationDateTime"`
-	EpochTime                int       `json:"EpochTime"`
-	WeatherText              string    `json:"WeatherText"`
-	WeatherIcon              int       `json:"WeatherIcon"`
-	HasPrecipitation         bool      `json:"HasPrecipitation"`
-	PrecipitationType        string    `json:"PrecipitationType"`
-	IsDayTime                bool      `json:"IsDayTime"`
-	Temperature              struct {
-		Metric struct {
-			Value    float64 `json:"Value"`
-			Unit     string  `json:"Unit"`
-			UnitType int     `json:"UnitType"`
-		} `json:"Metric"`
-		Imperial struct {
-			Value    float64 `json:"Value"`
-			Unit     string  `json:"Unit"`
-			UnitType int     `json:"UnitType"`
-		} `json:"Imperial"`
-	} `json:"Temperature"`
-	MobileLink string `json:"MobileLink"`
-	Link       string `json:"Link"`
+	Location struct {
+		Name           string  `json:"name"`
+		Region         string  `json:"region"`
+		Country        string  `json:"country"`
+		Lat            float64 `json:"lat"`
+		Lon            float64 `json:"lon"`
+		TzID           string  `json:"tz_id"`
+		LocaltimeEpoch int     `json:"localtime_epoch"`
+		Localtime      string  `json:"localtime"`
+	} `json:"location"`
+	Current struct {
+		LastUpdatedEpoch int     `json:"last_updated_epoch"`
+		LastUpdated      string  `json:"last_updated"`
+		TempC            float64 `json:"temp_c"`
+		TempF            float64 `json:"temp_f"`
+		IsDay            int     `json:"is_day"`
+		Condition        struct {
+			Text string `json:"text"`
+			Icon string `json:"icon"`
+			Code int    `json:"code"`
+		} `json:"condition"`
+		WindMph    float64 `json:"wind_mph"`
+		WindKph    float64 `json:"wind_kph"`
+		WindDegree float64 `json:"wind_degree"`
+		WindDir    string  `json:"wind_dir"`
+		PressureMb float64 `json:"pressure_mb"`
+		PressureIn float64 `json:"pressure_in"`
+		PrecipMm   float64 `json:"precip_mm"`
+		PrecipIn   float64 `json:"precip_in"`
+		Humidity   float64 `json:"humidity"`
+		Cloud      float64 `json:"cloud"`
+		FeelslikeC float64 `json:"feelslike_c"`
+		FeelslikeF float64 `json:"feelslike_f"`
+		WindchillC float64 `json:"windchill_c"`
+		WindchillF float64 `json:"windchill_f"`
+		HeatindexC float64 `json:"heatindex_c"`
+		HeatindexF float64 `json:"heatindex_f"`
+		DewpointC  float64 `json:"dewpoint_c"`
+		DewpointF  float64 `json:"dewpoint_f"`
+		VisKm      float64 `json:"vis_km"`
+		VisMiles   float64 `json:"vis_miles"`
+		Uv         float64 `json:"uv"`
+		GustMph    float64 `json:"gust_mph"`
+		GustKph    float64 `json:"gust_kph"`
+		ShortRad   float64 `json:"short_rad"`
+		DiffRad    float64 `json:"diff_rad"`
+		Dni        float64 `json:"dni"`
+		Gti        float64 `json:"gti"`
+	} `json:"current"`
 }
-
 type ErrResponse struct {
 	Code      string `json:"Code"`
 	Message   string `json:"Message"`
@@ -41,49 +67,42 @@ type ErrResponse struct {
 }
 
 var (
-	API_KEY     = "16cnkfx4543vJI1mMnV7RmXAmYAnQyrT"
-	locationKey string
-	postcode    = "N2 9LU"
+	conditionURL = "https://api.weatherapi.com/v1/current.json"
+	API_KEY      = "dd719ea57f1d4d44be6151200251209"
+	postcode     = "N2"
 )
 
 func (w Weather) String() string {
-	return fmt.Sprintf("%s %v℃", w.WeatherText, w.Temperature.Metric.Value)
+	c := w.Current
+	return fmt.Sprintf("%s %v℃", c.Condition.Text, c.TempC)
 }
 
-func GetWeather() ([]Weather, error) {
-	if locationKey == "" {
-		var err error
-		locationKey, err = GetLocationCode(postcode)
-		if err != nil {
-			return nil, err
-		}
-	}
-	var w []Weather
-	u := "https://dataservice.accuweather.com/currentconditions/v1/" + locationKey
-	uu, err := url.Parse(u)
+func GetWeather() (Weather, error) {
+	var w Weather
+	uu, err := url.Parse(conditionURL)
 	if err != nil {
 		panic(err)
 	}
 	args := uu.Query()
-	args.Add("apikey", API_KEY)
+	args.Add("key", API_KEY)
+	args.Add("q", postcode)
 	uu.RawQuery = args.Encode()
 
 	r, err := http.Get(uu.String())
 	if err != nil {
 		log.Println(err)
 
-		return nil, err
+		return w, err
 	}
 	defer r.Body.Close()
-	left := r.Header.Get("RateLimit-Remaining")
-	log.Println("weather update returned", r.Status, "remaining", left)
+	log.Println("weather update returned", r.Status)
 	if r.StatusCode != 200 {
 		var resp ErrResponse
 		err = json.NewDecoder(r.Body).Decode(&resp)
 		if err != nil {
-			return nil, err
+			return w, err
 		}
-		return nil, errors.New(resp.Message)
+		return w, errors.New(resp.Message)
 	}
 	err = json.NewDecoder(r.Body).Decode(&w)
 	return w, err
