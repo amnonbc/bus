@@ -23,15 +23,25 @@ type Bus struct {
 	ETA    time.Time
 }
 
-func GetCountdownData(baseURL string, stop int) ([]Bus, error) {
-	buses := make([]Bus, 0, 3)
+type StopInfo struct {
+	Name    string
+	Towards string
+}
+
+// GetBusData fetches arrivals and stop metadata for the given stop in a single
+// request. The URA API returns type-1 messages in the form:
+//
+//	[1, StopPointName, Towards, LineName, EstimatedTime_ms]
+func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		panic(err)
 	}
-	args := u.Query()
-	args.Add("StopCode1", strconv.Itoa(stop))
-	u.RawQuery = args.Encode()
+	q := u.Query()
+	q.Set("StopCode1", strconv.Itoa(stop))
+	q.Set("ReturnList", "StopPointName,LineName,EstimatedTime,Towards")
+	u.RawQuery = q.Encode()
+
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		panic(err)
@@ -40,42 +50,47 @@ func GetCountdownData(baseURL string, stop int) ([]Bus, error) {
 
 	r, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, StopInfo{}, err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 {
-		return nil, fmt.Errorf("bad status %s", r.Status)
+		return nil, StopInfo{}, fmt.Errorf("bad status %s", r.Status)
 	}
+
+	var buses []Bus
+	var info StopInfo
 	dec := json.NewDecoder(r.Body)
 	for {
-		var b []any
-		err := dec.Decode(&b)
+		var msg []any
+		err := dec.Decode(&msg)
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			slog.Error("decode TFL response", "err", err)
-			return nil, err
+			return nil, StopInfo{}, err
 		}
-		if len(b) < 4 {
+		if len(msg) < 5 {
 			continue
 		}
-		msgType, ok := b[0].(float64)
+		msgType, ok := msg[0].(float64)
 		if !ok || msgType != 1 {
 			continue
 		}
-		number, ok := b[2].(string)
-		if !ok {
+		name, ok1 := msg[1].(string)
+		towards, ok2 := msg[2].(string)
+		number, ok3 := msg[3].(string)
+		tnum, ok4 := msg[4].(float64)
+		if !ok1 || !ok2 || !ok3 || !ok4 {
 			continue
 		}
-		tnum, ok := b[3].(float64)
-		if !ok {
-			continue
+		if info.Name == "" {
+			info = StopInfo{Name: name, Towards: towards}
 		}
-		buses = append(buses, Bus{number, time.UnixMilli(int64(tnum))})
+		buses = append(buses, Bus{Number: number, ETA: time.UnixMilli(int64(tnum))})
 	}
 	slices.SortFunc(buses, func(a, b Bus) int {
 		return a.ETA.Compare(b.ETA)
 	})
-	return buses, nil
+	return buses, info, nil
 }
