@@ -50,8 +50,18 @@ func renderFrame(img *image.RGBA, bigFace, smallFace xfont.Face, tt *timeTable, 
 
 	draw.Draw(img, img.Bounds(), image.NewUniform(color.Black), image.Point{}, draw.Src)
 
+	grey := color.Gray{Y: 180}
+	info := tt.getStopInfo()
+	header := info.Name
+	if info.Towards != "" {
+		header += " - To: " + info.Towards
+	}
+	if header != "" {
+		drawString(img, smallFace, border, 28, header, grey)
+	}
+
 	buses := tt.getBuses()
-	y := 120
+	y := 150
 	count := 0
 	for _, b := range buses {
 		if count >= 3 {

@@ -182,7 +182,7 @@ func (fb *fbDevice) blit(img *image.RGBA, rotate bool) {
 	}
 }
 
-func runDisplay(tt *timeTable, weather *atomic.Pointer[string], rotate bool) error {
+func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool) error {
 	fb, err := openFB("/dev/fb0")
 	if err != nil {
 		return err
@@ -211,7 +211,7 @@ func runDisplay(tt *timeTable, weather *atomic.Pointer[string], rotate bool) err
 
 	for range tick.C {
 		weatherStr := *weather.Load()
-		renderFrame(img, bigFace, smallFace, tt, weatherStr)
+		renderFrame(img, bigFace, smallFace, active.Load(), weatherStr)
 		fb.blit(img, rotate)
 	}
 	return nil

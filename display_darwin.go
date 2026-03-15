@@ -21,7 +21,7 @@ const (
 	displayHeight = 480
 )
 
-func runDisplay(tt *timeTable, weather *atomic.Pointer[string], rotate bool) error {
+func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool) error {
 	bigFace, err := newFace(100)
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func runDisplay(tt *timeTable, weather *atomic.Pointer[string], rotate bool) err
 		img := image.NewRGBA(image.Rect(0, 0, displayWidth, displayHeight))
 		weatherStr := *weather.Load()
 		mu.Lock()
-		renderFrame(img, bigFace, smallFace, tt, weatherStr)
+		renderFrame(img, bigFace, smallFace, active.Load(), weatherStr)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "no-store")

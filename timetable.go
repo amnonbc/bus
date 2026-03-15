@@ -8,8 +8,9 @@ import (
 )
 
 type timeTable struct {
-	stopID int
-	busses atomic.Pointer[[]Bus]
+	stopID   int
+	info     StopInfo // fetched once at start, then read-only
+	busses   atomic.Pointer[[]Bus]
 }
 
 func newTimeTable(stopID int) *timeTable {
@@ -17,6 +18,12 @@ func newTimeTable(stopID int) *timeTable {
 }
 
 func (t *timeTable) start() {
+	info, err := GetStopInfoFromURA(tflBase, t.stopID)
+	if err != nil {
+		slog.Error("fetch stop info", "stop", t.stopID, "err", err)
+	} else {
+		t.info = info
+	}
 	t.download()
 	go t.downloadLoop()
 }
@@ -26,6 +33,10 @@ func (t *timeTable) getBuses() []Bus {
 		return *p
 	}
 	return nil
+}
+
+func (t *timeTable) getStopInfo() StopInfo {
+	return t.info
 }
 
 type delay time.Duration
