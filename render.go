@@ -1,3 +1,5 @@
+// render.go draws a full display frame onto an RGBA image: stop header,
+// upcoming bus arrivals with countdown times, weather, and a clock.
 package main
 
 import (

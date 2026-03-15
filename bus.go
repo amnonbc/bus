@@ -1,3 +1,4 @@
+// bus.go fetches live bus arrival times from the TFL URA countdown API.
 package main
 
 import (

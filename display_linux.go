@@ -1,5 +1,4 @@
-//go:build linux
-
+// display_linux.go drives the Linux framebuffer, blitting rendered frames to /dev/fb0.
 package main
 
 import (
