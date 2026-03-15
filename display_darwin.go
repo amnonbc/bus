@@ -4,12 +4,14 @@ package main
 
 import (
 	_ "embed"
+	"errors"
 	"image"
 	"image/png"
 	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"syscall"
 )
 
 //go:embed index.html
@@ -49,7 +51,7 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "no-store")
 		err := png.Encode(w, img)
-		if err != nil {
+		if err != nil && !errors.Is(err, syscall.EPIPE) {
 			slog.Error("png encode", "err", err)
 		}
 	})
