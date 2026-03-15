@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 )
@@ -25,9 +26,7 @@ func (t *timeTable) start() {
 func (t *timeTable) getBuses() []Bus {
 	t.Lock()
 	defer t.Unlock()
-	result := make([]Bus, len(t.busses))
-	copy(result, t.busses)
-	return result
+	return slices.Clone(t.busses)
 }
 
 type delay time.Duration

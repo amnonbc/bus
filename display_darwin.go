@@ -3,6 +3,7 @@
 package main
 
 import (
+	_ "embed"
 	"image"
 	"image/png"
 	"log/slog"
@@ -11,23 +12,13 @@ import (
 	"sync/atomic"
 )
 
+//go:embed index.html
+var htmlResponse []byte
+
 // Display dimensions match the real Pi screen.
 const (
 	displayWidth  = 800
 	displayHeight = 480
-
-	htmlResponse = `<!DOCTYPE html>
-		<html>
-		<head><title>Bus times</title></head>
-		<body style="background:#111;margin:0;display:flex;justify-content:center;align-items:center;height:100vh">
-		<img id="f" src="/frame.png" style="image-rendering:pixelated;max-width:100%">
-		<script>
-		setInterval(function(){
-			document.getElementById('f').src = '/frame.png?' + Date.now();
-		}, 1000);
-		</script>
-		</body>
-		</html>`
 )
 
 func runDisplay(tt *timeTable, weather *atomic.Pointer[string], rotate bool) error {
@@ -57,14 +48,15 @@ func runDisplay(tt *timeTable, weather *atomic.Pointer[string], rotate bool) err
 		mu.Unlock()
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "no-store")
-		if err := png.Encode(w, img); err != nil {
+		err := png.Encode(w, img)
+		if err != nil {
 			slog.Error("png encode", "err", err)
 		}
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(htmlResponse))
+		w.Write(htmlResponse)
 	})
 
 	slog.Info("preview server", "url", "http://localhost:8080")
