@@ -39,12 +39,9 @@ func findTouchDevice() string {
 		}
 		lower := strings.ToLower(string(data))
 		if strings.Contains(lower, "ft5") || strings.Contains(lower, "touch") {
-			parts := strings.Split(p, "/")
-			for _, part := range parts {
-				if strings.HasPrefix(part, "event") {
-					return "/dev/input/" + part
-				}
-			}
+			// p is .../event0/device/name — event dir is three levels up
+			event := filepath.Base(filepath.Dir(filepath.Dir(p)))
+			return "/dev/input/" + event
 		}
 	}
 	return ""
@@ -90,10 +87,10 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 			if active.Load() == tt1 {
 				active.Store(tt2)
 			} else {
-			active.Store(tt1)
+				active.Store(tt1)
 			}
-			current := active.Load()
-			slog.Info("touch: switched bus stop", "stop", current.info.Name, "towards", current.info.Towards)
+			info := active.Load().getStopInfo()
+			slog.Info("touch: switched bus stop", "stop", info.Name, "towards", info.Towards)
 		}
 	}
 }
