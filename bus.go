@@ -2,9 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -12,18 +13,18 @@ import (
 	"time"
 )
 
-const tflBase = "https://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
-type resp []any
+const tflBase = "https://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
 
 type Bus struct {
 	Number string
 	ETA    time.Time
 }
 
-func GetCountdownData(baseUrl string, stop int) ([]Bus, error) {
+func GetCountdownData(baseURL string, stop int) ([]Bus, error) {
 	buses := make([]Bus, 0, 3)
-	u, err := url.Parse(baseUrl)
+	u, err := url.Parse(baseURL)
 	if err != nil {
 		panic(err)
 	}
@@ -36,39 +37,44 @@ func GetCountdownData(baseUrl string, stop int) ([]Bus, error) {
 	}
 	req.Header.Set("User-Agent", "amnon_bus_times/2.0 (amnonbc@gmail.com)")
 
-	r, err := http.DefaultClient.Do(req)
+	r, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 {
-		fmt.Println(r.Status)
 		return nil, fmt.Errorf("bad status %s", r.Status)
 	}
 	dec := json.NewDecoder(r.Body)
 	for {
-		var b resp
+		var b []any
 		err := dec.Decode(&b)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			log.Println(err)
+			slog.Error("decode TFL response", "err", err)
 			return nil, err
 		}
-		if b[0].(float64) != 1 {
+		if len(b) < 4 {
+			continue
+		}
+		msgType, ok := b[0].(float64)
+		if !ok || msgType != 1 {
+			continue
+		}
+		number, ok := b[2].(string)
+		if !ok {
 			continue
 		}
 		tnum, ok := b[3].(float64)
 		if !ok {
 			continue
 		}
-		t := int64(tnum)
-		tm := time.UnixMilli(t)
-		buses = append(buses, Bus{b[2].(string), tm})
+		buses = append(buses, Bus{number, time.UnixMilli(int64(tnum))})
 	}
 	slices.SortFunc(buses, func(a, b Bus) int {
 		return a.ETA.Compare(b.ETA)
 	})
-	return buses, err
+	return buses, nil
 }
