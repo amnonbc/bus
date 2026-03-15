@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head><title>Bus times</title></head>
+<body style="background:#111;margin:0;display:flex;justify-content:center;align-items:center;height:100vh">
+<img id="f" src="/frame.png" style="image-rendering:pixelated;max-width:100%">
+<script>
+setInterval(function(){
+	document.getElementById('f').src = '/frame.png?' + Date.now();
+}, 1000);
+</script>
+</body>
+</html>
