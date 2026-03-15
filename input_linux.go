@@ -90,7 +90,7 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 			if active.Load() == tt1 {
 				active.Store(tt2)
 			} else {
-				active.Store(tt1)
+com				active.Store(tt1)
 			}
 			current := active.Load()
 			slog.Info("touch: switched bus stop", "stop", current.info.Name, "towards", current.info.Towards)
