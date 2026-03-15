@@ -3,15 +3,13 @@ package main
 import (
 	"fmt"
 	"log/slog"
-	"slices"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type timeTable struct {
-	sync.Mutex
 	stopID int
-	busses []Bus
+	busses atomic.Pointer[[]Bus]
 }
 
 func newTimeTable(stopID int) *timeTable {
@@ -24,9 +22,10 @@ func (t *timeTable) start() {
 }
 
 func (t *timeTable) getBuses() []Bus {
-	t.Lock()
-	defer t.Unlock()
-	return slices.Clone(t.busses)
+	if p := t.busses.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 type delay time.Duration
@@ -48,9 +47,7 @@ func (t *timeTable) download() {
 		slog.Error("download timetable", "err", err)
 		return
 	}
-	t.Lock()
-	t.busses = b
-	t.Unlock()
+	t.busses.Store(&b)
 }
 
 func (t *timeTable) downloadLoop() {
