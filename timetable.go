@@ -1,3 +1,5 @@
+// timetable.go manages a periodically-refreshed list of bus arrivals for a
+// single stop, safe for concurrent access via atomic pointers.
 package main
 
 import (

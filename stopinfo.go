@@ -1,3 +1,4 @@
+// stopinfo.go fetches the stop name and destination direction from the TFL URA API.
 package main
 
 import (

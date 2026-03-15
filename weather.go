@@ -1,3 +1,4 @@
+// weather.go fetches current conditions from the weatherapi.com API.
 package main
 
 import (

@@ -1,3 +1,5 @@
+// main is the entry point. It parses flags, starts background goroutines for
+// bus data, weather, and touch input, then runs the framebuffer display loop.
 package main
 
 import (
