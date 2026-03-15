@@ -60,7 +60,6 @@ type fbVarScreenInfo struct {
 }
 
 type fbDevice struct {
-	file   *os.File
 	width  int
 	height int
 	stride int
@@ -103,8 +102,8 @@ func openFB(dev string) (*fbDevice, error) {
 		int(f.Fd()), 0, fbSize,
 		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED,
 	)
+	f.Close()
 	if err != nil {
-		f.Close()
 		return nil, fmt.Errorf("mmap: %w", err)
 	}
 
@@ -114,7 +113,6 @@ func openFB(dev string) (*fbDevice, error) {
 		"red", vinfo.Red.Offset, "green", vinfo.Green.Offset, "blue", vinfo.Blue.Offset)
 
 	return &fbDevice{
-		file:   f,
 		width:  width,
 		height: height,
 		stride: stride,
@@ -126,7 +124,6 @@ func openFB(dev string) (*fbDevice, error) {
 
 func (fb *fbDevice) close() {
 	syscall.Munmap(fb.data)
-	fb.file.Close()
 }
 
 // blit copies img to the framebuffer, optionally rotating 180 degrees, and
