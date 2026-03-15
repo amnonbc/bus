@@ -14,7 +14,9 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
 )
+
 
 const fbioGetVScreenInfo = 0x4600
 

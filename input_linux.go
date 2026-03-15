@@ -9,12 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
 const (
-	evKey    = 0x01
-	btnTouch = 0x14a
+	evKey      = 0x01
+	btnTouch   = 0x14a
+	eviocgrab  = 0x40044590 // EVIOCGRAB: exclusively grab the device
 )
 
 // inputEvent mirrors struct input_event from <linux/input.h> for 32-bit ARM.
@@ -65,6 +67,12 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 		return
 	}
 	defer f.Close()
+
+	// Grab the device exclusively so the kernel doesn't also feed events to
+	// /dev/mice, which would cause the DRM hardware cursor to appear on screen.
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), eviocgrab, 1); errno != 0 {
+		slog.Warn("EVIOCGRAB", "dev", dev, "err", errno)
+	}
 	slog.Info("watching touch device", "dev", dev)
 
 	var ev inputEvent
