@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	evKey      = 0x01
-	btnTouch   = 0x14a
-	eviocgrab  = 0x40044590 // EVIOCGRAB: exclusively grab the device
+	evKey     = 0x01
+	btnTouch  = 0x14a
+	eviocgrab = 0x40044590 // EVIOCGRAB: exclusively grab the device
 )
 
 // inputEvent mirrors struct input_event from <linux/input.h> for 32-bit ARM.
@@ -92,7 +92,8 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 			} else {
 				active.Store(tt1)
 			}
-			slog.Info("touch: switched bus stop")
+			current := active.Load()
+			slog.Info("touch: switched bus stop", "stop", current.info.Name, "towards", current.info.Towards)
 		}
 	}
 }
