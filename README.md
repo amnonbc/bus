@@ -9,7 +9,9 @@ A full-screen bus arrival display that runs on a Raspberry Pi 2, showing the nex
 - **Linux (Pi):** renders directly to `/dev/fb0` — no X11, Wayland, or GPU driver required.
 - **macOS (dev):** serves a live preview at `http://localhost:8080`, rendering to PNG on each request.
 
-The display shows up to three upcoming buses (route number + minutes until arrival), weather conditions at the bottom left, and a clock at the bottom right.
+The display shows the stop name and direction at the top, up to three upcoming buses (route number + minutes until arrival), weather conditions at the bottom left, and a clock at the bottom right.
+
+If a second bus stop is configured, tapping the Raspberry Pi touchscreen toggles between the two stops.
 
 ## Building
 
@@ -25,6 +27,8 @@ No CGO, no system dependencies beyond a standard Go toolchain.
 ./bus [flags]
 
   -stop int          TFL bus stop code (default 74640)
+  -stop2 int         secondary bus stop code; touch screen toggles between the two
+  -touch str         touch input device path (auto-detected if empty)
   -rotate            rotate display 180 degrees (default true)
   -weather-key str   weatherapi.com API key
   -location str      location for weather — postcode or city (default "N2")
