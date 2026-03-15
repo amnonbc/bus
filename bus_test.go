@@ -12,47 +12,49 @@ import (
 
 var testData = `
 [4,"1.0",1701512836819]
-[1,"Midhurst Avenue","102",1701512991000]
-[1,"Midhurst Avenue","102",1701513626000]
-[1,"Midhurst Avenue","234",1701513209000]
-[1,"Midhurst Avenue","102",1701514468000]
-[1,"Midhurst Avenue","102",1701514536000]
-[1,"Midhurst Avenue","234",1701514596000]
-[1,"Midhurst Avenue","234",1701513860000]
+[1,"Midhurst Avenue","East Finchley","102",1701512991000]
+[1,"Midhurst Avenue","East Finchley","102",1701513626000]
+[1,"Midhurst Avenue","East Finchley","234",1701513209000]
+[1,"Midhurst Avenue","East Finchley","102",1701514468000]
+[1,"Midhurst Avenue","East Finchley","102",1701514536000]
+[1,"Midhurst Avenue","East Finchley","234",1701514596000]
+[1,"Midhurst Avenue","East Finchley","234",1701513860000]
 `
 
-func TestGetCountdownData(t *testing.T) {
+func TestGetBusData(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, testData)
 	}))
 	defer ts.Close()
 
-	got, err := GetCountdownData(ts.URL, 123)
+	buses, info, err := GetBusData(ts.URL, 123)
 	require.NoError(t, err)
 
-	require.Equal(t, 7, len(got))
-	require.Equal(t, "102", got[0].Number)
-	require.Equal(t, time.Date(2023, time.December, 2, 10, 29, 51, 0, time.Local), got[0].ETA)
+	require.Equal(t, 7, len(buses))
+	require.Equal(t, "102", buses[0].Number)
+	require.Equal(t, time.Date(2023, time.December, 2, 10, 29, 51, 0, time.Local), buses[0].ETA)
+	require.Equal(t, "Midhurst Avenue", info.Name)
+	require.Equal(t, "East Finchley", info.Towards)
 }
 
-func TestGetCountdownDataErr(t *testing.T) {
+func TestGetBusDataErr(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
 	defer ts.Close()
 
-	got, err := GetCountdownData(ts.URL, 123)
+	buses, _, err := GetBusData(ts.URL, 123)
 	require.Error(t, err)
-	require.Nil(t, got)
+	require.Nil(t, buses)
 }
 
-func TestGetCountdownDataNetwork(t *testing.T) {
+func TestGetBusDataNetwork(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
 	ts.Close()
 
-	got, err := GetCountdownData(ts.URL, 123)
+	buses, _, err := GetBusData(ts.URL, 123)
 	require.Error(t, err)
-	require.Nil(t, got)
+	require.Nil(t, buses)
 }
