@@ -24,13 +24,24 @@ func fetchWeather(apiKey, location string, weather *atomic.Pointer[string]) {
 
 func main() {
 	stop := flag.Int("stop", 74640, "bus stop code")
+	stop2 := flag.Int("stop2", 77484, "secondary bus stop code (touch screen toggles between the two)")
+	touchDev := flag.String("touch", "", "touch input device path (auto-detected if empty)")
 	rotate := flag.Bool("rotate", true, "rotate display 180 degrees")
 	apiKey := flag.String("weather-key", "dd719ea57f1d4d44be6151200251209", "weatherapi.com API key")
 	location := flag.String("location", "N2", "location for weather (postcode or city)")
 	flag.Parse()
 
-	tt := newTimeTable(*stop)
-	tt.start()
+	tt1 := newTimeTable(*stop)
+	tt1.start()
+
+	var active atomic.Pointer[timeTable]
+	active.Store(tt1)
+
+	if *stop2 != 0 {
+		tt2 := newTimeTable(*stop2)
+		tt2.start()
+		go watchTouch(*touchDev, tt1, tt2, &active)
+	}
 
 	var weather atomic.Pointer[string]
 	weather.Store(new("loading..."))
@@ -44,7 +55,7 @@ func main() {
 		}
 	}()
 
-	if err := runDisplay(tt, &weather, *rotate); err != nil {
+	if err := runDisplay(&active, &weather, *rotate); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
