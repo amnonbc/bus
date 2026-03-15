@@ -28,6 +28,37 @@ type StopInfo struct {
 	Towards string
 }
 
+// uraMessage is a decoded URA type-1 row:
+//
+//	[1, StopPointName, Towards, LineName, EstimatedTime_ms]
+type uraMessage struct {
+	Stop StopInfo
+	Bus  Bus
+}
+
+func (m *uraMessage) UnmarshalJSON(data []byte) error {
+	var arr [5]json.RawMessage
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	var msgType int
+	if err := json.Unmarshal(arr[0], &msgType); err != nil || msgType != 1 {
+		return fmt.Errorf("not a type-1 message %s", data)
+	}
+	var etaMS int64
+	err := errors.Join(
+		json.Unmarshal(arr[1], &m.Stop.Name),
+		json.Unmarshal(arr[2], &m.Stop.Towards),
+		json.Unmarshal(arr[3], &m.Bus.Number),
+		json.Unmarshal(arr[4], &etaMS),
+	)
+	if err != nil {
+		return err
+	}
+	m.Bus.ETA = time.UnixMilli(etaMS)
+	return nil
+}
+
 // GetBusData fetches arrivals and stop metadata for the given stop in a single
 // request. The URA API returns type-1 messages in the form:
 //
@@ -61,8 +92,8 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	var info StopInfo
 	dec := json.NewDecoder(r.Body)
 	for {
-		var msg []any
-		err := dec.Decode(&msg)
+		var raw json.RawMessage
+		err := dec.Decode(&raw)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -70,24 +101,15 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 			slog.Error("decode TFL response", "err", err)
 			return nil, StopInfo{}, err
 		}
-		if len(msg) < 5 {
-			continue
-		}
-		msgType, ok := msg[0].(float64)
-		if !ok || msgType != 1 {
-			continue
-		}
-		name, ok1 := msg[1].(string)
-		towards, ok2 := msg[2].(string)
-		number, ok3 := msg[3].(string)
-		tnum, ok4 := msg[4].(float64)
-		if !ok1 || !ok2 || !ok3 || !ok4 {
-			continue
+		var msg uraMessage
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			slog.Debug("decode TFL response", "err", err)
+			continue // non-type-1 or malformed row
 		}
 		if info.Name == "" {
-			info = StopInfo{Name: name, Towards: towards}
+			info = msg.Stop
 		}
-		buses = append(buses, Bus{Number: number, ETA: time.UnixMilli(int64(tnum))})
+		buses = append(buses, msg.Bus)
 	}
 	slices.SortFunc(buses, func(a, b Bus) int {
 		return a.ETA.Compare(b.ETA)
