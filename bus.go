@@ -27,18 +27,20 @@ type Bus struct {
 type StopInfo struct {
 	Name    string
 	Towards string
+	Lat     float64
+	Lon     float64
 }
 
 // uraMessage is a decoded URA type-1 row:
 //
-//	[1, StopPointName, Towards, LineName, EstimatedTime_ms]
+//	[1, StopPointName, Towards, Latitude, Longitude, LineName, EstimatedTime_ms]
 type uraMessage struct {
 	Stop StopInfo
 	Bus  Bus
 }
 
 func (m *uraMessage) UnmarshalJSON(data []byte) error {
-	var arr [5]json.RawMessage
+	var arr [7]json.RawMessage
 	if err := json.Unmarshal(data, &arr); err != nil {
 		return err
 	}
@@ -50,8 +52,10 @@ func (m *uraMessage) UnmarshalJSON(data []byte) error {
 	err := errors.Join(
 		json.Unmarshal(arr[1], &m.Stop.Name),
 		json.Unmarshal(arr[2], &m.Stop.Towards),
-		json.Unmarshal(arr[3], &m.Bus.Number),
-		json.Unmarshal(arr[4], &etaMS),
+		json.Unmarshal(arr[3], &m.Stop.Lat),
+		json.Unmarshal(arr[4], &m.Stop.Lon),
+		json.Unmarshal(arr[5], &m.Bus.Number),
+		json.Unmarshal(arr[6], &etaMS),
 	)
 	if err != nil {
 		return err
@@ -63,7 +67,7 @@ func (m *uraMessage) UnmarshalJSON(data []byte) error {
 // GetBusData fetches arrivals and stop metadata for the given stop in a single
 // request. The URA API returns type-1 messages in the form:
 //
-//	[1, StopPointName, Towards, LineName, EstimatedTime_ms]
+//	[1, StopPointName, Towards, Latitude, Longitude, LineName, EstimatedTime_ms]
 func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
@@ -71,7 +75,7 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	}
 	q := u.Query()
 	q.Set("StopCode1", strconv.Itoa(stop))
-	q.Set("ReturnList", "StopPointName,LineName,EstimatedTime,Towards")
+	q.Set("ReturnList", "StopPointName,LineName,EstimatedTime,Towards,Latitude,Longitude")
 	u.RawQuery = q.Encode()
 
 	req, err := http.NewRequest("GET", u.String(), nil)

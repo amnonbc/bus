@@ -12,13 +12,13 @@ import (
 
 var testData = `
 [4,"1.0",1701512836819]
-[1,"Midhurst Avenue","East Finchley","102",1701512991000]
-[1,"Midhurst Avenue","East Finchley","102",1701513626000]
-[1,"Midhurst Avenue","East Finchley","234",1701513209000]
-[1,"Midhurst Avenue","East Finchley","102",1701514468000]
-[1,"Midhurst Avenue","East Finchley","102",1701514536000]
-[1,"Midhurst Avenue","East Finchley","234",1701514596000]
-[1,"Midhurst Avenue","East Finchley","234",1701513860000]
+[1,"Midhurst Avenue","East Finchley",51.5921,-0.1780,"102",1701512991000]
+[1,"Midhurst Avenue","East Finchley",51.5921,-0.1780,"102",1701513626000]
+[1,"Midhurst Avenue","East Finchley",51.5921,-0.1780,"234",1701513209000]
+[1,"Midhurst Avenue","East Finchley",51.5921,-0.1780,"102",1701514468000]
+[1,"Midhurst Avenue","East Finchley",51.5921,-0.1780,"102",1701514536000]
+[1,"Midhurst Avenue","East Finchley",51.5921,-0.1780,"234",1701514596000]
+[1,"Midhurst Avenue","East Finchley",51.5921,-0.1780,"234",1701513860000]
 `
 
 func TestGetBusData(t *testing.T) {
@@ -35,6 +35,8 @@ func TestGetBusData(t *testing.T) {
 	require.Equal(t, time.Date(2023, time.December, 2, 10, 29, 51, 0, time.Local), buses[0].ETA)
 	require.Equal(t, "Midhurst Avenue", info.Name)
 	require.Equal(t, "East Finchley", info.Towards)
+	require.InDelta(t, 51.5921, info.Lat, 0.0001)
+	require.InDelta(t, -0.1780, info.Lon, 0.0001)
 }
 
 func TestGetBusDataErr(t *testing.T) {
