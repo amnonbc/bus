@@ -41,15 +41,17 @@ type uraMessage struct {
 
 func (m *uraMessage) UnmarshalJSON(data []byte) error {
 	var arr [7]json.RawMessage
-	if err := json.Unmarshal(data, &arr); err != nil {
+	err := json.Unmarshal(data, &arr)
+	if err != nil {
 		return err
 	}
 	var msgType int
-	if err := json.Unmarshal(arr[0], &msgType); err != nil || msgType != 1 {
+	err = json.Unmarshal(arr[0], &msgType)
+	if err != nil || msgType != 1 {
 		return fmt.Errorf("not a type-1 message %s", data)
 	}
 	var etaMS int64
-	err := errors.Join(
+	err = errors.Join(
 		json.Unmarshal(arr[1], &m.Stop.Name),
 		json.Unmarshal(arr[2], &m.Stop.Towards),
 		json.Unmarshal(arr[3], &m.Stop.Lat),
@@ -107,7 +109,8 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 			return nil, StopInfo{}, err
 		}
 		var msg uraMessage
-		if err := json.Unmarshal(raw, &msg); err != nil {
+		err = json.Unmarshal(raw, &msg)
+		if err != nil {
 			slog.Debug("decode TFL response", "err", err)
 			continue // non-type-1 or malformed row
 		}
