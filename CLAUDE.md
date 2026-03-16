@@ -15,6 +15,9 @@
 
 ## Code style
 - Avoid closure functions (anonymous functions assigned to variables). Prefer inlining short code or extracting named functions.
+- Keep functions short and simple.
+- Avoid complex logic in a single function.
+- Do not combine an action and its error check in a single `if` condition. Call the function first, then check the error separately. e.g. prefer `err := f(); if err != nil {` on two lines over `if err := f(); err != nil {` on one.
 
 ## File editing
 - Edit files directly without asking for permission first.

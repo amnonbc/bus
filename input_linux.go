@@ -76,7 +76,8 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 	var ev inputEvent
 	var lastSwitch time.Time
 	for {
-		if err := binary.Read(f, binary.LittleEndian, &ev); err != nil {
+		err := binary.Read(f, binary.LittleEndian, &ev)
+		if err != nil {
 			slog.Error("read touch event", "err", err)
 			return
 		}

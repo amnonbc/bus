@@ -69,7 +69,8 @@ func main() {
 
 	go weatherLoop(*apiKey, tt1, &weather)
 
-	if err := runDisplay(&active, &weather, *rotate, notify); err != nil {
+	err := runDisplay(&active, &weather, *rotate, notify)
+	if err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
