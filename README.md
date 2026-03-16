@@ -29,14 +29,14 @@ No CGO, no system dependencies beyond a standard Go toolchain.
   -stop int          TFL bus stop code (default 74640)
   -stop2 int         secondary bus stop code; touch screen toggles between the two
   -touch str         touch input device path (auto-detected if empty)
+  -debounce dur      minimum interval between touch-triggered stop switches (default 100ms)
   -rotate            rotate display 180 degrees (default true)
   -weather-key str   weatherapi.com API key
-  -location str      location for weather — postcode or city (default "N2")
 ```
 
 ## Configuration
 
-Weather is fetched from [weatherapi.com](https://www.weatherapi.com/). Sign up for a free API key and pass it via `-weather-key`.
+Weather is fetched from [weatherapi.com](https://www.weatherapi.com/). Sign up for a free API key and pass it via `-weather-key`. The location is derived automatically from the GPS coordinates returned by the TFL API for the configured bus stop.
 
 ## History
 
