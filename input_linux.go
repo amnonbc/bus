@@ -50,7 +50,7 @@ func findTouchDevice() string {
 // watchTouch reads touch events and toggles the active timetable between tt1
 // and tt2 on each finger-down (BTN_TOUCH value 1) event. It sends on notify
 // after each switch so the display can redraw immediately.
-func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTable], notify chan<- struct{}) {
+func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTable], notify chan<- struct{}, debounce time.Duration) {
 	if dev == "" {
 		dev = findTouchDevice()
 	}
@@ -81,7 +81,7 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 			return
 		}
 		if ev.Type == evKey && ev.Code == btnTouch && ev.Value == 1 {
-			if time.Since(lastSwitch) < time.Second {
+			if time.Since(lastSwitch) < debounce {
 				continue
 			}
 			lastSwitch = time.Now()
