@@ -28,6 +28,7 @@ func main() {
 	stop := flag.Int("stop", 74640, "bus stop code")
 	stop2 := flag.Int("stop2", 77484, "secondary bus stop code (touch screen toggles between the two)")
 	touchDev := flag.String("touch", "", "touch input device path (auto-detected if empty)")
+	debounce := flag.Duration("debounce", 100*time.Millisecond, "minimum interval between touch-triggered stop switches")
 	rotate := flag.Bool("rotate", true, "rotate display 180 degrees")
 	apiKey := flag.String("weather-key", "dd719ea57f1d4d44be6151200251209", "weatherapi.com API key")
 	location := flag.String("location", "N2", "location for weather (postcode or city)")
@@ -43,7 +44,7 @@ func main() {
 	if *stop2 != 0 {
 		tt2 := newTimeTable(*stop2)
 		tt2.start()
-		go watchTouch(*touchDev, tt1, tt2, &active, notify)
+		go watchTouch(*touchDev, tt1, tt2, &active, notify, *debounce)
 	}
 
 	var weather atomic.Pointer[string]
