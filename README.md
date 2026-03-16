@@ -1,6 +1,6 @@
 # bus
 
-<img width="434" alt="Screenshot 2023-12-13 at 06 45 12" src="https://github.com/amnonbc/bus/assets/7283149/7755bdeb-f894-4c08-a951-1003bbcb1666">
+<img width="800" height="480" alt="bus" src="https://github.com/user-attachments/assets/fb81db42-0186-4042-8ce2-9c69c23f6730" />
 
 A full-screen bus arrival display that runs on a Raspberry Pi 2, showing the next buses due at a nearby stop using the [TFL Countdown](http://countdown.tfl.gov.uk/) API, along with the current weather and time.
 
