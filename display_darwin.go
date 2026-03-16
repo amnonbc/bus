@@ -23,7 +23,7 @@ const (
 	displayHeight = 480
 )
 
-func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool) error {
+func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool, _ <-chan struct{}) error {
 	bigFace, err := newFace(100)
 	if err != nil {
 		return err

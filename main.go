@@ -39,10 +39,11 @@ func main() {
 	var active atomic.Pointer[timeTable]
 	active.Store(tt1)
 
+	notify := make(chan struct{}, 1)
 	if *stop2 != 0 {
 		tt2 := newTimeTable(*stop2)
 		tt2.start()
-		go watchTouch(*touchDev, tt1, tt2, &active)
+		go watchTouch(*touchDev, tt1, tt2, &active, notify)
 	}
 
 	var weather atomic.Pointer[string]
@@ -57,7 +58,7 @@ func main() {
 		}
 	}()
 
-	if err := runDisplay(&active, &weather, *rotate); err != nil {
+	if err := runDisplay(&active, &weather, *rotate, notify); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
