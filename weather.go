@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"net/url"
 )
 
@@ -39,7 +38,7 @@ func GetWeather(baseURL, apiKey, location string) (Weather, error) {
 	args.Add("q", location)
 	uu.RawQuery = args.Encode()
 
-	r, err := http.Get(uu.String())
+	r, err := httpClient.Get(uu.String())
 	if err != nil {
 		slog.Error("weather request", "err", err)
 		return w, err
