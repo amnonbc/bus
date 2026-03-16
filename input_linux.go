@@ -48,8 +48,9 @@ func findTouchDevice() string {
 }
 
 // watchTouch reads touch events and toggles the active timetable between tt1
-// and tt2 on each finger-down (BTN_TOUCH value 1) event.
-func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTable]) {
+// and tt2 on each finger-down (BTN_TOUCH value 1) event. It sends on notify
+// after each switch so the display can redraw immediately.
+func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTable], notify chan<- struct{}) {
 	if dev == "" {
 		dev = findTouchDevice()
 	}
@@ -91,6 +92,10 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 			}
 			info := active.Load().getStopInfo()
 			slog.Info("touch: switched bus stop", "stop", info.Name, "towards", info.Towards)
+			select {
+			case notify <- struct{}{}:
+			default:
+			}
 		}
 	}
 }

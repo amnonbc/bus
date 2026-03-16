@@ -1,4 +1,5 @@
 // bus.go fetches live bus arrival times from the TFL URA countdown API.
+// API documentation: https://content.tfl.gov.uk/tfl-live-bus-river-bus-arrivals-api-documentation.pdf
 package main
 
 import (

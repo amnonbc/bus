@@ -13,6 +13,9 @@
 - Use `git reset HEAD~N` + recommit to squash when the last few commits tell a messy story.
 - Always show the user the diff and wait for approval before committing or pushing.
 
+## Code style
+- Avoid closure functions (anonymous functions assigned to variables). Prefer inlining short code or extracting named functions.
+
 ## File editing
 - Edit files directly without asking for permission first.
 - Running `go build` and `go test` is also fine without asking.
