@@ -203,7 +203,10 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	}
 	defer smallFace.Close()
 
-	img := image.NewRGBA(image.Rect(0, 0, fb.width, fb.height))
+	p := newHTTPPreview(fb.width, fb.height)
+	p.register()
+	slog.Info("preview server", "url", "http://localhost:8080")
+	go listenHTTP()
 
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
@@ -213,8 +216,9 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 		case <-tick.C:
 		case <-notify:
 		}
-		renderFrame(img, bigFace, smallFace, active.Load(), *weather.Load())
-		fb.blit(img, rotate)
+		renderFrame(p.backBuf(), bigFace, smallFace, active.Load(), *weather.Load())
+		fb.blit(p.backBuf(), rotate)
+		p.publishFrame()
 	}
 	return nil
 }
