@@ -16,6 +16,27 @@ import (
 
 const fbioGetVScreenInfo = 0x4600
 
+// bayer4x4 is a normalised 4×4 Bayer ordered-dither threshold matrix scaled
+// to the range [0, 15]. Adding this value to an 8-bit channel before
+// right-shifting spreads quantisation error across a 4×4 pixel tile.
+var bayer4x4 = [4][4]uint8{
+	{0, 8, 2, 10},
+	{12, 4, 14, 6},
+	{3, 11, 1, 9},
+	{15, 7, 13, 5},
+}
+
+// clamp8 clamps v to [0, 255].
+func clamp8(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return v
+}
+
 type fbBitField struct {
 	Offset   uint32
 	Length   uint32
@@ -169,11 +190,15 @@ func (fb *fbDevice) blit(img *image.RGBA, rotate bool) {
 					uint32(b)<<bOff | uint32(a)<<aOff
 				binary.LittleEndian.PutUint32(dst, px)
 			case 16:
-				// RGB565: red and blue are 5 bits, green is 6 bits.
-				// Discard the low bits of each channel before packing.
-				r5 := uint16(r >> 3)
-				g6 := uint16(g >> 2)
-				b5 := uint16(b >> 3)
+				// RGB565 with Bayer 4×4 ordered dithering.
+				// Without dithering, anti-aliased font edges quantise in
+				// steps of 8 (R/B) or 4 (G), producing a visible staircase.
+				// Adding a position-dependent threshold before the right-shift
+				// spreads the quantisation error across neighbouring pixels.
+				d := bayer4x4[y&3][x&3]
+				r5 := uint16(clamp8(int(r)+int(d>>3))) >> 3
+				g6 := uint16(clamp8(int(g)+int(d>>2))) >> 2
+				b5 := uint16(clamp8(int(b)+int(d>>3))) >> 3
 				binary.LittleEndian.PutUint16(dst, r5<<uint(rOff)|g6<<uint(gOff)|b5<<uint(bOff))
 			}
 		}
