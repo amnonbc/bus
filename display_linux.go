@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
-	"time"
 	"unsafe"
 )
 
@@ -207,18 +206,6 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	p.register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()
-
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-
-	for {
-		select {
-		case <-tick.C:
-		case <-notify:
-		}
-		renderFrame(p.backBuf(), bigFace, smallFace, active.Load(), *weather.Load())
-		fb.blit(p.backBuf(), rotate)
-		p.publishFrame()
-	}
+	runLoop(p, active, weather, bigFace, smallFace, fb, rotate, notify)
 	return nil
 }

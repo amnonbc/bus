@@ -11,7 +11,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"sync"
+	"sync/atomic"
 	"syscall"
+	"time"
+
+	xfont "golang.org/x/image/font"
 )
 
 //go:embed index.html
@@ -79,4 +83,31 @@ func (p *httpPreview) register() {
 func listenHTTP() {
 	err := http.ListenAndServe(":8080", nil)
 	slog.Error("HTTP preview server", "err", err)
+}
+
+// blitter writes a rendered frame to a hardware display (e.g. framebuffer).
+// noopBlitter is used on platforms with no physical display.
+type blitter interface {
+	blit(img *image.RGBA, rotate bool)
+}
+
+type noopBlitter struct{}
+
+func (noopBlitter) blit(*image.RGBA, bool) {}
+
+// runLoop is the shared render loop used on all platforms. It renders a frame
+// each tick (or immediately on notify), publishes it via double buffering for
+// the HTTP preview, and passes it to fb for hardware display if provided.
+func runLoop(p *httpPreview, active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], bigFace, smallFace xfont.Face, fb blitter, rotate bool, notify <-chan struct{}) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+		case <-notify:
+		}
+		renderFrame(p.backBuf(), bigFace, smallFace, active.Load(), *weather.Load())
+		fb.blit(p.backBuf(), rotate)
+		p.publishFrame()
+	}
 }
