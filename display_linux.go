@@ -180,7 +180,7 @@ func (fb *fbDevice) blit(img *image.RGBA, rotate bool) {
 	}
 }
 
-func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool, notify <-chan struct{}) error {
+func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool, notify <-chan struct{}, flip func()) error {
 	fb, err := openFB("/dev/fb0")
 	if err != nil {
 		return err
@@ -203,7 +203,7 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	defer smallFace.Close()
 
 	buf := newFrameBuffer(fb.width, fb.height)
-	newHTTPPreview(buf).register()
+	newHTTPPreview(buf, flip).register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()
 	runLoop(buf, active, weather, bigFace, smallFace, fb, rotate, notify)

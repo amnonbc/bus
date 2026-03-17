@@ -86,17 +86,7 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 				continue
 			}
 			lastSwitch = time.Now()
-			if active.Load() == tt1 {
-				active.Store(tt2)
-			} else {
-				active.Store(tt1)
-			}
-			info := active.Load().getStopInfo()
-			slog.Info("touch: switched bus stop", "stop", info.Name, "towards", info.Towards)
-			select {
-			case notify <- struct{}{}:
-			default:
-			}
+			switchStop(tt1, tt2, active, notify)
 		}
 	}
 }
