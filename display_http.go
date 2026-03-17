@@ -15,6 +15,9 @@ import (
 //go:embed index.html
 var htmlResponse []byte
 
+//go:embed favicon.png
+var faviconData []byte
+
 type httpPreview struct {
 	buf *frameBuffer
 }
@@ -39,8 +42,14 @@ func (p *httpPreview) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Write(htmlResponse)
 }
 
+func (p *httpPreview) serveFavicon(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	w.Write(faviconData)
+}
+
 func (p *httpPreview) register() {
 	http.HandleFunc("/frame.png", p.serveFrame)
+	http.HandleFunc("/favicon.ico", p.serveFavicon)
 	http.HandleFunc("/", p.serveIndex)
 }
 
