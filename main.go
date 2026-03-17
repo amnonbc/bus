@@ -13,6 +13,21 @@ import (
 
 const weatherURL = "https://api.weatherapi.com/v1/current.json"
 
+// switchStop toggles active between tt1 and tt2 and notifies the render loop.
+func switchStop(tt1, tt2 *timeTable, active *atomic.Pointer[timeTable], notify chan<- struct{}) {
+	next := tt2
+	if active.Load() == tt2 {
+		next = tt1
+	}
+	active.Store(next)
+	info := next.getStopInfo()
+	slog.Info("switched bus stop", "stop", info.Name, "towards", info.Towards)
+	select {
+	case notify <- struct{}{}:
+	default:
+	}
+}
+
 func fetchWeather(apiKey, location string, weather *atomic.Pointer[string]) {
 	w, err := GetWeather(weatherURL, apiKey, location)
 	var s string
@@ -58,10 +73,12 @@ func main() {
 	active.Store(tt1)
 
 	notify := make(chan struct{}, 1)
+	var flip func()
 	if *stop2 != 0 {
 		tt2 := newTimeTable(*stop2)
 		tt2.start()
 		go watchTouch(*touchDev, tt1, tt2, &active, notify, *debounce)
+		flip = func() { switchStop(tt1, tt2, &active, notify) }
 	}
 
 	var weather atomic.Pointer[string]
@@ -69,7 +86,7 @@ func main() {
 
 	go weatherLoop(*apiKey, tt1, &weather)
 
-	err := runDisplay(&active, &weather, *rotate, notify)
+	err := runDisplay(&active, &weather, *rotate, notify, flip)
 	if err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)

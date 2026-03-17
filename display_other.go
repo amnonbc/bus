@@ -14,7 +14,7 @@ const (
 	displayHeight = 480
 )
 
-func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], _ bool, notify <-chan struct{}) error {
+func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], _ bool, notify <-chan struct{}, flip func()) error {
 	bigFace, err := newFace(100)
 	if err != nil {
 		return err
@@ -27,7 +27,7 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	defer smallFace.Close()
 
 	buf := newFrameBuffer(displayWidth, displayHeight)
-	newHTTPPreview(buf).register()
+	newHTTPPreview(buf, flip).register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()
 	runLoop(buf, active, weather, bigFace, smallFace, noopBlitter{}, false, notify)

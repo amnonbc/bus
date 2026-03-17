@@ -19,11 +19,12 @@ var htmlResponse []byte
 var faviconData []byte
 
 type httpPreview struct {
-	buf *frameBuffer
+	buf  *frameBuffer
+	flip func()
 }
 
-func newHTTPPreview(buf *frameBuffer) *httpPreview {
-	return &httpPreview{buf: buf}
+func newHTTPPreview(buf *frameBuffer, flip func()) *httpPreview {
+	return &httpPreview{buf: buf, flip: flip}
 }
 
 func (p *httpPreview) serveFrame(w http.ResponseWriter, r *http.Request) {
@@ -47,9 +48,23 @@ func (p *httpPreview) serveFavicon(w http.ResponseWriter, r *http.Request) {
 	w.Write(faviconData)
 }
 
+func (p *httpPreview) serveFlip(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if p.flip == nil {
+		http.Error(w, "no second stop configured", http.StatusNotFound)
+		return
+	}
+	p.flip()
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (p *httpPreview) register() {
 	http.HandleFunc("/frame.png", p.serveFrame)
 	http.HandleFunc("/favicon.ico", p.serveFavicon)
+	http.HandleFunc("/flip", p.serveFlip)
 	http.HandleFunc("/", p.serveIndex)
 }
 
@@ -59,4 +74,3 @@ func listenHTTP() {
 	err := http.ListenAndServe(":8080", nil)
 	slog.Error("HTTP preview server", "err", err)
 }
-
