@@ -21,8 +21,9 @@ func newFace(size float64) (xfont.Face, error) {
 		return nil, fmt.Errorf("parse font: %w", err)
 	}
 	face, err := opentype.NewFace(ttf, &opentype.FaceOptions{
-		Size: size,
-		DPI:  72,
+		Size:    size,
+		DPI:     72,
+		Hinting: xfont.HintingFull,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new face: %w", err)
