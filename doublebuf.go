@@ -30,8 +30,8 @@ func newFrameBuffer(width, height int) *frameBuffer {
 
 // backBuf returns the buffer to draw into for the next frame.
 func (fb *frameBuffer) backBuf() *image.RGBA {
-	fb.mu.Lock()
-	defer fb.mu.Unlock()
+	fb.mu.RLock()
+	defer fb.mu.RUnlock()
 	return &fb.bufs[fb.back]
 }
 
@@ -64,8 +64,9 @@ func runLoop(buf *frameBuffer, active *atomic.Pointer[timeTable], weather *atomi
 		case <-tick.C:
 		case <-notify:
 		}
-		renderFrame(buf.backBuf(), bigFace, smallFace, active.Load(), *weather.Load())
-		hw.blit(buf.backBuf(), rotate)
+		back := buf.backBuf()
+		renderFrame(back, bigFace, smallFace, active.Load(), *weather.Load())
+		hw.blit(back, rotate)
 		buf.publishFrame()
 	}
 }
