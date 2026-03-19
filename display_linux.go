@@ -164,42 +164,54 @@ func (fb *fbDevice) blit(img *image.RGBA, rotate bool) {
 		if rotate {
 			dstY = fb.height - 1 - y
 		}
-		dstRow := fb.data[dstY*fb.stride:]
 
-		for x := 0; x < fb.width; x++ {
-			// Extract RGBA components from the source pixel.
-			r := srcRow[x*4+0]
-			g := srcRow[x*4+1]
-			b := srcRow[x*4+2]
-			a := srcRow[x*4+3]
+		// Walk src forward by 4 bytes per pixel; walk dst forward or backward
+		// by bytesPerPixel, avoiding a per-pixel multiply.
+		srcOff := 0
+		dstOff := dstY * fb.stride
+		dstStep := bytesPerPixel
+		if rotate {
+			dstOff += (fb.width - 1) * bytesPerPixel
+			dstStep = -bytesPerPixel
+		}
 
-			// When rotating 180°, column 0 maps to the last column, etc.
-			dstX := x
-			if rotate {
-				dstX = fb.width - 1 - x
-			}
-			dst := dstRow[dstX*bytesPerPixel:]
+		// Cache the bayer row for this y — it is constant across the x loop.
+		bayerRow := bayer4x4[y&3]
 
-			// Pack the pixel into the hardware format. The vinfo bitfields
-			// tell us at which bit offset each colour channel sits, which
-			// varies between framebuffer drivers and colour depths.
-			switch fb.bpp {
-			case 32:
+		// Pack the pixel into the hardware format. The vinfo bitfields
+		// tell us at which bit offset each colour channel sits, which
+		// varies between framebuffer drivers and colour depths.
+		switch fb.bpp {
+		case 32:
+			for x := 0; x < fb.width; x++ {
+				r := srcRow[srcOff]
+				g := srcRow[srcOff+1]
+				b := srcRow[srcOff+2]
+				a := srcRow[srcOff+3]
 				// Shift each 8-bit channel to its hardware bit position and OR together.
 				px := uint32(r)<<rOff | uint32(g)<<gOff |
 					uint32(b)<<bOff | uint32(a)<<aOff
-				binary.LittleEndian.PutUint32(dst, px)
-			case 16:
+				binary.LittleEndian.PutUint32(fb.data[dstOff:], px)
+				srcOff += 4
+				dstOff += dstStep
+			}
+		case 16:
+			for x := 0; x < fb.width; x++ {
+				r := srcRow[srcOff]
+				g := srcRow[srcOff+1]
+				b := srcRow[srcOff+2]
 				// RGB565 with Bayer 4×4 ordered dithering.
 				// Without dithering, anti-aliased font edges quantise in
 				// steps of 8 (R/B) or 4 (G), producing a visible staircase.
 				// Adding a position-dependent threshold before the right-shift
 				// spreads the quantisation error across neighbouring pixels.
-				d := bayer4x4[y&3][x&3]
+				d := bayerRow[x&3]
 				r5 := uint16(clamp8(int(r)+int(d>>3))) >> 3
 				g6 := uint16(clamp8(int(g)+int(d>>2))) >> 2
 				b5 := uint16(clamp8(int(b)+int(d>>3))) >> 3
-				binary.LittleEndian.PutUint16(dst, r5<<uint(rOff)|g6<<uint(gOff)|b5<<uint(bOff))
+				binary.LittleEndian.PutUint16(fb.data[dstOff:], r5<<uint(rOff)|g6<<uint(gOff)|b5<<uint(bOff))
+				srcOff += 4
+				dstOff += dstStep
 			}
 		}
 	}
