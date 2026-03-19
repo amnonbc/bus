@@ -5,6 +5,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"image"
 	"log/slog"
@@ -346,7 +347,8 @@ func (d *drmDevice) close() {
 //
 // XRGB8888 in little-endian memory: byte[0]=B, byte[1]=G, byte[2]=R, byte[3]=X.
 // image.RGBA.Pix layout:            byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A.
-// So blit swaps the R and B channels; no dithering or bit-shifting is needed.
+// Each pixel is read as a uint32, R and B are swapped, and the result is written
+// back as a uint32 — one load and one store per pixel, no dithering required.
 func (d *drmDevice) blit(img *image.RGBA, rotate bool) {
 	for y := 0; y < d.height; y++ {
 		srcRow := img.Pix[y*img.Stride:]
@@ -365,10 +367,12 @@ func (d *drmDevice) blit(img *image.RGBA, rotate bool) {
 		}
 
 		for x := 0; x < d.width; x++ {
-			d.data[dstOff+0] = srcRow[srcOff+2] // B
-			d.data[dstOff+1] = srcRow[srcOff+1] // G
-			d.data[dstOff+2] = srcRow[srcOff+0] // R
-			d.data[dstOff+3] = 0                // X (unused)
+			// Read source as uint32 (LE): R | G<<8 | B<<16 | A<<24.
+			// Rearrange to XRGB8888: B | G<<8 | R<<16 | 0<<24.
+			// G stays in byte 1; R (byte 0) moves to byte 2; B (byte 2) moves to byte 0.
+			src := binary.LittleEndian.Uint32(srcRow[srcOff:])
+			px := (src & 0x0000FF00) | (src&0x000000FF)<<16 | (src>>16)&0xFF
+			binary.LittleEndian.PutUint32(d.data[dstOff:], px)
 			srcOff += 4
 			dstOff += dstStep
 		}
