@@ -218,14 +218,28 @@ func (fb *fbDevice) blit(img *image.RGBA, rotate bool) {
 }
 
 func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool, notify <-chan struct{}, flip func()) error {
-	fb, err := openFB("/dev/fb0")
-	if err != nil {
-		return err
-	}
-	defer fb.close()
+	var hw blitter
+	var width, height int
 
-	if fb.bpp != 16 && fb.bpp != 32 {
-		return fmt.Errorf("unsupported framebuffer depth: %d bpp", fb.bpp)
+	drm, err := openDRM("/dev/dri/card0")
+	if err == nil {
+		defer drm.close()
+		hw = drm
+		width = drm.width
+		height = drm.height
+	} else {
+		slog.Info("DRM unavailable, falling back to framebuffer", "err", err)
+		fb, err := openFB("/dev/fb0")
+		if err != nil {
+			return err
+		}
+		defer fb.close()
+		if fb.bpp != 16 && fb.bpp != 32 {
+			return fmt.Errorf("unsupported framebuffer depth: %d bpp", fb.bpp)
+		}
+		hw = fb
+		width = fb.width
+		height = fb.height
 	}
 
 	bigFace, err := newFace(100)
@@ -239,10 +253,10 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	}
 	defer smallFace.Close()
 
-	buf := newFrameBuffer(fb.width, fb.height)
+	buf := newFrameBuffer(width, height)
 	newHTTPPreview(buf, flip).register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()
-	runLoop(buf, active, weather, bigFace, smallFace, fb, rotate, notify)
+	runLoop(buf, active, weather, bigFace, smallFace, hw, rotate, notify)
 	return nil
 }
