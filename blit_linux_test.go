@@ -87,3 +87,31 @@ func BenchmarkBlit32Rotate(b *testing.B) {
 		fb.blit(img, true)
 	}
 }
+
+func newTestDRM(width, height int) *drmDevice {
+	stride := width * 4 // XRGB8888 is always 4 bytes per pixel
+	return &drmDevice{
+		width:  width,
+		height: height,
+		stride: stride,
+		data:   make([]byte, stride*height),
+	}
+}
+
+func BenchmarkBlitDRM(b *testing.B) {
+	d := newTestDRM(800, 480)
+	img := newTestImage(800, 480)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		d.blit(img, false)
+	}
+}
+
+func BenchmarkBlitDRMRotate(b *testing.B) {
+	d := newTestDRM(800, 480)
+	img := newTestImage(800, 480)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		d.blit(img, true)
+	}
+}
