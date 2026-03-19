@@ -154,9 +154,6 @@ func drmIoctl(fd uintptr, req uintptr, arg unsafe.Pointer) error {
 	return nil
 }
 
-// drmModeConnected is the connection state value for a live connector.
-const drmModeConnected = 1
-
 type drmDevice struct {
 	file   *os.File
 	fd     uintptr
@@ -210,6 +207,7 @@ func openDRM(dev string) (*drmDevice, error) {
 	// (including VC4 on the Pi) report DRM_MODE_UNKNOWNCONNECTION even when a
 	// display is physically attached; CountModes > 0 is the reliable indicator.
 	var connID uint32
+	var encoderID uint32
 	var mode drmModeModeInfo
 	found := false
 	for _, id := range connectorIDs {
@@ -232,6 +230,7 @@ func openDRM(dev string) (*drmDevice, error) {
 			continue
 		}
 		connID = id
+		encoderID = conn.EncoderID
 		mode = modes[0]
 		found = true
 		break
@@ -241,16 +240,9 @@ func openDRM(dev string) (*drmDevice, error) {
 		return nil, fmt.Errorf("no DRM connector with modes found")
 	}
 
-	// Get the encoder attached to this connector to find the CRTC.
-	var connInfo drmModeGetConnector
-	connInfo.ConnectorID = connID
-	err = drmIoctl(fd, ioctlModeGetConnector, unsafe.Pointer(&connInfo))
-	if err != nil {
-		f.Close()
-		return nil, fmt.Errorf("DRM_IOCTL_MODE_GETCONNECTOR: %w", err)
-	}
+	// Get the CRTC currently bound to this connector's encoder.
 	var enc drmModeGetEncoder
-	enc.EncoderID = connInfo.EncoderID
+	enc.EncoderID = encoderID
 	err = drmIoctl(fd, ioctlModeGetEncoder, unsafe.Pointer(&enc))
 	if err != nil {
 		f.Close()
@@ -282,6 +274,8 @@ func openDRM(dev string) (*drmDevice, error) {
 	fb.Handle = dumb.Handle
 	err = drmIoctl(fd, ioctlModeAddFB, unsafe.Pointer(&fb))
 	if err != nil {
+		destroy := drmModeDestroyDumb{Handle: dumb.Handle}
+		drmIoctl(fd, ioctlModeDestroyDumb, unsafe.Pointer(&destroy))
 		f.Close()
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_ADDFB: %w", err)
 	}
