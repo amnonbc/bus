@@ -28,11 +28,11 @@ func newHTTPPreview(buf *frameBuffer, flip func()) *httpPreview {
 }
 
 func (p *httpPreview) serveFrame(w http.ResponseWriter, r *http.Request) {
+	snap := p.buf.copyFront()
+	defer p.buf.recycle(snap)
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
-	p.buf.mu.RLock()
-	err := png.Encode(w, &p.buf.bufs[p.buf.front])
-	p.buf.mu.RUnlock()
+	err := png.Encode(w, snap)
 	if err != nil && !errors.Is(err, syscall.EPIPE) {
 		slog.Error("png encode", "err", err)
 	}

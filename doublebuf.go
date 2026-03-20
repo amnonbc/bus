@@ -13,16 +13,34 @@ import (
 // frameBuffer uses double buffering: the render loop writes into the back
 // buffer while readers (HTTP handlers) read from the front buffer.
 // publishFrame swaps them. Both front and back are protected by mu.
+// pool is a typed wrapper around sync.Pool to avoid type assertions at call sites.
+type pool[T any] struct {
+	p sync.Pool
+}
+
+func newPool[T any](newFn func() *T) pool[T] {
+	return pool[T]{p: sync.Pool{New: func() any { return newFn() }}}
+}
+
+func (p *pool[T]) get() *T  { return p.p.Get().(*T) }
+func (p *pool[T]) put(v *T) { p.p.Put(v) }
+
 type frameBuffer struct {
 	mu    sync.RWMutex
 	bufs  [2]image.RGBA
-	front int // index of the front (display) buffer; protected by mu
-	back  int // index of the back (render) buffer; protected by mu
+	front int          // index of the front (display) buffer; protected by mu
+	back  int          // index of the back (render) buffer; protected by mu
+	pool  pool[image.RGBA] // recycles image snapshots for copyFront
 }
 
 func newFrameBuffer(width, height int) *frameBuffer {
 	rect := image.Rect(0, 0, width, height)
-	fb := &frameBuffer{front: 0, back: 1}
+	size := width * height * 4
+	fb := &frameBuffer{
+		front: 0,
+		back:  1,
+		pool:  newPool(func() *image.RGBA { return &image.RGBA{Pix: make([]byte, size)} }),
+	}
 	fb.bufs[0] = *image.NewRGBA(rect)
 	fb.bufs[1] = *image.NewRGBA(rect)
 	return fb
@@ -33,6 +51,25 @@ func (fb *frameBuffer) backBuf() *image.RGBA {
 	fb.mu.RLock()
 	defer fb.mu.RUnlock()
 	return &fb.bufs[fb.back]
+}
+
+// copyFront returns a snapshot of the front buffer using a pooled pixel slice.
+// The lock is held only for the pixel copy, not for any subsequent encoding.
+// Call recycle when done to return the slice to the pool.
+func (fb *frameBuffer) copyFront() *image.RGBA {
+	fb.mu.RLock()
+	src := &fb.bufs[fb.front]
+	img := fb.pool.get()
+	img.Stride = src.Stride
+	img.Rect = src.Rect
+	copy(img.Pix, src.Pix)
+	fb.mu.RUnlock()
+	return img
+}
+
+// recycle returns a copyFront snapshot to the pool.
+func (fb *frameBuffer) recycle(img *image.RGBA) {
+	fb.pool.put(img)
 }
 
 // publishFrame swaps back and front, making the just-rendered frame
