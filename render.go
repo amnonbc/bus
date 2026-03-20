@@ -42,10 +42,10 @@ func measureString(face xfont.Face, s string) int {
 	return int(d.MeasureString(s) >> 6)
 }
 
-func drawString(img *image.RGBA, face xfont.Face, x, y int, s string, clr color.Color) {
+func drawString(img *image.RGBA, face xfont.Face, x, y int, s string, clr *image.Uniform) {
 	d := xfont.Drawer{
 		Dst:  img,
-		Src:  image.NewUniform(clr),
+		Src:  clr,
 		Face: face,
 		Dot:  fixed.P(x, y),
 	}
@@ -139,13 +139,13 @@ func drawBuses(img *image.RGBA, face xfont.Face, buses []Bus, startIdx, startY, 
 		if d < 0 && !animating {
 			continue
 		}
-		drawString(img, face, border, y, b.Number, color.White)
+		drawString(img, face, border, y, b.Number, image.White)
 		etaStr := d.String()
 		if d < 0 {
 			etaStr = "Due"
 		}
 		rightX := w - border - measureString(face, etaStr)
-		drawString(img, face, rightX, y, etaStr, color.White)
+		drawString(img, face, rightX, y, etaStr, image.White)
 		y += slotHeight
 		count++
 	}
@@ -155,10 +155,12 @@ func drawBuses(img *image.RGBA, face xfont.Face, buses []Bus, startIdx, startY, 
 func drawFooter(img *image.RGBA, face xfont.Face, weatherStr string, border int) {
 	y := img.Bounds().Max.Y - border
 	w := img.Bounds().Max.X
-	drawString(img, face, border, y, weatherStr, color.White)
+	drawString(img, face, border, y, weatherStr, image.White)
 	timeStr := time.Now().Format("3:04:05")
-	drawString(img, face, w-border-measureString(face, timeStr), y, timeStr, color.White)
+	drawString(img, face, w-border-measureString(face, timeStr), y, timeStr, image.White)
 }
+
+var headerColour = image.NewUniform(color.Gray{Y: 180})
 
 // drawHeader renders the stop name and direction onto the top of img.
 func drawHeader(img *image.RGBA, tt *timeTable, f xfont.Face, border int) {
@@ -168,7 +170,7 @@ func drawHeader(img *image.RGBA, tt *timeTable, f xfont.Face, border int) {
 		header += " - To: " + info.Towards
 	}
 	if header != "" {
-		drawString(img, f, border, f.Metrics().Ascent.Ceil(), header, color.Gray{Y: 180})
+		drawString(img, f, border, f.Metrics().Ascent.Ceil(), header, headerColour)
 	}
 }
 
