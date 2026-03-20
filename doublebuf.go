@@ -59,14 +59,24 @@ func (noopBlitter) blit(*image.RGBA, bool) {}
 func runLoop(buf *frameBuffer, active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], bigFace, smallFace xfont.Face, hw blitter, rotate bool, notify <-chan struct{}) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
+	r := newRenderer()
+	wasAnimating := false
 	for {
+		back := buf.backBuf()
+		animating := r.renderFrame(back, bigFace, smallFace, active.Load(), *weather.Load())
+		hw.blit(back, rotate)
+		buf.publishFrame()
+		if animating != wasAnimating {
+			if animating {
+				tick.Reset(time.Millisecond)
+			} else {
+				tick.Reset(time.Second)
+			}
+			wasAnimating = animating
+		}
 		select {
 		case <-tick.C:
 		case <-notify:
 		}
-		back := buf.backBuf()
-		renderFrame(back, bigFace, smallFace, active.Load(), *weather.Load())
-		hw.blit(back, rotate)
-		buf.publishFrame()
 	}
 }
