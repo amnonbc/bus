@@ -105,7 +105,7 @@ func runLoop(buf *frameBuffer, active *atomic.Pointer[timeTable], weather *atomi
 		buf.publishFrame()
 		if animating != wasAnimating {
 			if animating {
-				tick.Reset(time.Millisecond)
+				tick.Reset(33 * time.Millisecond) // ~30 fps during animation
 			} else {
 				tick.Reset(time.Second)
 			}
