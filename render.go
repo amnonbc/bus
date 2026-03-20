@@ -18,6 +18,7 @@ import (
 const (
 	slotHeight     = 130
 	scrollDuration = 5 * time.Second
+	border         = 20
 )
 
 func newFace(size float64) (xfont.Face, error) {
@@ -151,17 +152,29 @@ func drawBuses(img *image.RGBA, face xfont.Face, buses []Bus, startIdx, startY, 
 }
 
 // drawFooter renders the weather string and clock onto the bottom of img.
-func drawFooter(img *image.RGBA, face xfont.Face, weatherStr string, w, h, border int) {
-	y := h - 20
+func drawFooter(img *image.RGBA, face xfont.Face, weatherStr string, border int) {
+	y := img.Bounds().Max.Y - border
+	w := img.Bounds().Max.X
 	drawString(img, face, border, y, weatherStr, color.White)
 	timeStr := time.Now().Format("3:04:05")
 	drawString(img, face, w-border-measureString(face, timeStr), y, timeStr, color.White)
 }
 
+// drawHeader renders the stop name and direction onto the top of img.
+func drawHeader(img *image.RGBA, tt *timeTable, f xfont.Face, border int) {
+	info := tt.getStopInfo()
+	header := info.Name
+	if info.Towards != "" {
+		header += " - To: " + info.Towards
+	}
+	if header != "" {
+		drawString(img, f, border, f.Metrics().Ascent.Ceil(), header, color.Gray{Y: 180})
+	}
+}
+
 // renderFrame draws a complete frame and returns true while a scroll animation
 // is in progress. The caller should render at a high frame rate while true.
 func (r *renderer) renderFrame(img *image.RGBA, bigFace, smallFace xfont.Face, tt *timeTable, weatherStr string) bool {
-	const border = 20
 	w := img.Bounds().Max.X
 	h := img.Bounds().Max.Y
 
@@ -186,15 +199,8 @@ func (r *renderer) renderFrame(img *image.RGBA, bigFace, smallFace xfont.Face, t
 	draw.Draw(img, image.Rect(0, h-footerH, w, h), black, image.Point{}, draw.Src)
 
 	// Header and footer drawn last so they always appear on top of bus rows.
-	info := tt.getStopInfo()
-	header := info.Name
-	if info.Towards != "" {
-		header += " - To: " + info.Towards
-	}
-	if header != "" {
-		drawString(img, smallFace, border, 28, header, color.Gray{Y: 180})
-	}
-	drawFooter(img, smallFace, weatherStr, w, h, border)
+	drawHeader(img, tt, smallFace, border)
+	drawFooter(img, smallFace, weatherStr, border)
 
 	return animating
 }
