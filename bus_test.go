@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +11,21 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+// tbHandler routes slog output through t.Log so it is shown only on failure.
+type tbHandler struct{ tb testing.TB }
+
+func (h tbHandler) Enabled(context.Context, slog.Level) bool  { return true }
+func (h tbHandler) WithAttrs([]slog.Attr) slog.Handler        { return h }
+func (h tbHandler) WithGroup(string) slog.Handler             { return h }
+func (h tbHandler) Handle(_ context.Context, r slog.Record) error {
+	h.tb.Log(r.Message)
+	return nil
+}
+
+func setTestLogger(tb testing.TB) {
+	slog.SetDefault(slog.New(tbHandler{tb}))
+}
 
 var testData = `
 [4,"1.0",1701512836819]
@@ -22,6 +39,7 @@ var testData = `
 `
 
 func TestGetBusData(t *testing.T) {
+	setTestLogger(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, testData)
 	}))
@@ -40,6 +58,7 @@ func TestGetBusData(t *testing.T) {
 }
 
 func TestGetBusDataErr(t *testing.T) {
+	setTestLogger(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -51,6 +70,7 @@ func TestGetBusDataErr(t *testing.T) {
 }
 
 func TestGetBusDataNetwork(t *testing.T) {
+	setTestLogger(t)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
