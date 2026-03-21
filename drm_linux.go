@@ -5,7 +5,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"image"
 	"log/slog"
@@ -343,38 +342,40 @@ func (d *drmDevice) close() {
 	d.file.Close()
 }
 
+// swapRB converts a pixel from RGBA (R|G<<8|B<<16|A<<24) to
+// XRGB8888 (B|G<<8|R<<16) by swapping the R and B channels.
+func swapRB(src uint32) uint32 {
+	return (src & 0x0000FF00) | (src&0x000000FF)<<16 | (src>>16)&0xFF
+}
+
+// rowU32 returns a []uint32 view over n pixels starting at byte offset off in b.
+// All pixel offsets are multiples of 4, so the cast is always aligned.
+func rowU32(b []byte, off, n int) []uint32 {
+	return unsafe.Slice((*uint32)(unsafe.Pointer(&b[off])), n)
+}
+
 // blit copies img to the DRM dumb buffer in XRGB8888 format.
 //
 // XRGB8888 in little-endian memory: byte[0]=B, byte[1]=G, byte[2]=R, byte[3]=X.
 // image.RGBA.Pix layout:            byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A.
-// Each pixel is read as a uint32, R and B are swapped, and the result is written
-// back as a uint32 — one load and one store per pixel, no dithering required.
+// Each pixel is a uint32 R/B swap; no dithering required.
+// unsafe.Slice views eliminate per-pixel bounds checks from binary.LittleEndian.
 func (d *drmDevice) blit(img *image.RGBA, rotate bool) {
-	for y := 0; y < d.height; y++ {
-		srcRow := img.Pix[y*img.Stride:]
-
-		dstY := y
-		if rotate {
-			dstY = d.height - 1 - y
+	if rotate {
+		for y := 0; y < d.height; y++ {
+			src := rowU32(img.Pix, y*img.Stride, d.width)
+			dst := rowU32(d.data, (d.height-1-y)*d.stride, d.width)
+			for x := 0; x < d.width; x++ {
+				dst[d.width-1-x] = swapRB(src[x])
+			}
 		}
-
-		srcOff := 0
-		dstOff := dstY * d.stride
-		dstStep := 4
-		if rotate {
-			dstOff += (d.width - 1) * 4
-			dstStep = -4
-		}
-
-		for x := 0; x < d.width; x++ {
-			// Read source as uint32 (LE): R | G<<8 | B<<16 | A<<24.
-			// Rearrange to XRGB8888: B | G<<8 | R<<16 | 0<<24.
-			// G stays in byte 1; R (byte 0) moves to byte 2; B (byte 2) moves to byte 0.
-			src := binary.LittleEndian.Uint32(srcRow[srcOff:])
-			px := (src & 0x0000FF00) | (src&0x000000FF)<<16 | (src>>16)&0xFF
-			binary.LittleEndian.PutUint32(d.data[dstOff:], px)
-			srcOff += 4
-			dstOff += dstStep
+	} else {
+		for y := 0; y < d.height; y++ {
+			src := rowU32(img.Pix, y*img.Stride, d.width)
+			dst := rowU32(d.data, y*d.stride, d.width)
+			for x := 0; x < d.width; x++ {
+				dst[x] = swapRB(src[x])
+			}
 		}
 	}
 }
