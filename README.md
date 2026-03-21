@@ -17,7 +17,7 @@ If a second bus stop is configured, tapping the Raspberry Pi touchscreen toggles
 
 ### DRM/KMS (preferred)
 
-On Linux the program first tries to open `/dev/dri/card0` and use the kernel's DRM/KMS subsystem. It finds the first connected connector, picks its preferred mode, allocates a 32 bpp dumb buffer in XRGB8888 format, and sets the CRTC directly. The pixel conversion from the internal RGBA image is a simple R/B channel swap — no dithering or bit-shifting — which is significantly faster than the fbdev RGB565 path.
+On Linux the program tries `/dev/dri/card0`, `card1`, `card2` in order and uses the first that supports modesetting. On Pi 4/5 with the KMS driver, `card0` is a render-only V3D node; the display controller is typically `card1`. It finds the first connected connector, picks its preferred mode, allocates a 32 bpp dumb buffer in XRGB8888 format, and sets the CRTC directly. The pixel conversion from the internal RGBA image is a simple R/B channel swap — no dithering or bit-shifting — which is significantly faster than the fbdev RGB565 path.
 
 This requires the process to be DRM master (i.e. running on the console with no display server). On a Pi running Pi OS, enable the KMS driver by adding `dtoverlay=vc4-kms-v3d` to `/boot/config.txt`.
 
@@ -35,20 +35,28 @@ If DRM is unavailable, the program writes directly to `/dev/fb0`. It supports bo
 
 ### Blit performance (ARMv7, 800×480, Pi 2)
 
-CPU profiling showed `fbDevice.blit` consuming ~15% of total CPU. Three optimisations were applied to the inner pixel loop:
+CPU profiling showed `fbDevice.blit` consuming ~15% of total CPU. The blit was optimised in three stages:
 
+**Stage 1 — fbdev inner loop (fbdev path)**
 1. **Hoist the bpp switch outside the x loop** — bpp is constant for the device lifetime, so each colour depth now has its own tight loop.
 2. **Replace per-pixel multiplies with stepping offsets** — `srcOff` and `dstOff` advance by addition rather than recomputing `x*4` and `dstX*bytesPerPixel` each iteration.
 3. **Cache the Bayer dither row** — `bayer4x4[y&3]` is constant across the entire x loop for a given row.
 
-The DRM path avoids the RGB565 dithering entirely, replacing it with a plain R/B channel swap.
+**Stage 2 — DRM/KMS path**
 
-| Path | Time/frame | vs fbdev 16bpp |
+The DRM path avoids RGB565 dithering entirely, replacing it with a plain R/B channel swap (one `uint32` load and store per pixel).
+
+**Stage 3 — eliminate bounds checks (DRM path)**
+
+`binary.LittleEndian.Uint32/PutUint32` performs a bounds check on every pixel (384,000 per frame) that the compiler cannot eliminate when using stepped byte offsets. Replacing them with `unsafe.Slice` `[]uint32` row views lets the compiler prove the bounds statically, removing all per-pixel checks. The rotate branch was also hoisted outside both loops.
+
+| Path | Time/frame | vs original |
 |---|---|---|
-| fbdev 16bpp (before optimisation) | 53.2 ms | baseline |
-| fbdev 16bpp (after optimisation) | 39.6 ms | −26% |
-| fbdev 32bpp (after optimisation) | 34.7 ms | −35% |
-| DRM XRGB8888 | **24.7 ms** | **−54%** |
+| fbdev 16bpp (original) | 53.2 ms | baseline |
+| fbdev 16bpp (stage 1) | 39.6 ms | −26% |
+| fbdev 32bpp (stage 1) | 34.6 ms | −35% |
+| DRM XRGB8888 (stage 2) | 28.7 ms | −46% |
+| DRM XRGB8888 (stage 3) | **8.6 ms** | **−84%** |
 
 ## Building
 
