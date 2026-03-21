@@ -18,7 +18,7 @@ import (
 const (
 	slotHeight     = 130
 	scrollDuration = 5 * time.Second
-	border         = 20
+	border         = 80
 )
 
 func newFace(size float64) (xfont.Face, error) {
@@ -153,7 +153,7 @@ func drawBuses(img *image.RGBA, face xfont.Face, buses []Bus, startIdx, startY, 
 
 // drawFooter renders the weather string and clock onto the bottom of img.
 func drawFooter(img *image.RGBA, face xfont.Face, weatherStr string, border int) {
-	y := img.Bounds().Max.Y - border
+	y := img.Bounds().Max.Y - face.Metrics().Descent.Ceil()
 	w := img.Bounds().Max.X
 	drawString(img, face, border, y, weatherStr, image.White)
 	timeStr := time.Now().Format("3:04:05")
