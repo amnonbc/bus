@@ -21,6 +21,13 @@ const (
 	border         = 80
 )
 
+// smoothstep maps t ∈ [0,1] to [0,1] with zero first-derivative at both
+// endpoints, producing an ease-in/ease-out curve: 3t² − 2t³.
+// See https://en.wikipedia.org/wiki/Smoothstep
+func smoothstep(t float64) float64 {
+	return t * t * (3 - 2*t)
+}
+
 func newFace(size float64) (xfont.Face, error) {
 	ttf, err := opentype.Parse(gobold.TTF)
 	if err != nil {
@@ -96,9 +103,11 @@ func (r *renderer) advanceScroll(liveBuses []Bus, now time.Time) (buses []Bus, y
 			r.scrollStart = time.Time{}
 			r.scrollBuses = nil
 		} else {
+			// t runs 0→1 over scrollDuration. yOffset starts at slotHeight
+			// (buses appear one row below) and eases to 0 (final position),
+			// sliding the list upward with a smooth ease-in/ease-out curve.
 			t := float64(elapsed) / float64(scrollDuration)
-			t = t * t * (3 - 2*t) // smoothstep
-			yOffset = int(float64(slotHeight) * (1 - t))
+			yOffset = int(float64(slotHeight) * (1 - smoothstep(t)))
 		}
 	}
 
