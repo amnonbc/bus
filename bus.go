@@ -47,7 +47,10 @@ func (m *uraMessage) UnmarshalJSON(data []byte) error {
 	}
 	var msgType int
 	err = json.Unmarshal(arr[0], &msgType)
-	if err != nil || msgType != 1 {
+	if err != nil {
+		return fmt.Errorf("unmarshal message type: %w", err)
+	}
+	if msgType != 1 {
 		return fmt.Errorf("not a type-1 message %s", data)
 	}
 	var etaMS int64
