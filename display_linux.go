@@ -221,7 +221,7 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	var hw blitter
 	var width, height int
 
-	drm, err := openDRM("/dev/dri/card0")
+	drm, err := openDRM("/dev/dri/card0", rotate)
 	if err == nil {
 		defer drm.close()
 		hw = drm

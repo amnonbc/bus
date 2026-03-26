@@ -50,13 +50,19 @@ The DRM path avoids RGB565 dithering entirely, replacing it with a plain R/B cha
 
 `binary.LittleEndian.Uint32/PutUint32` performs a bounds check on every pixel (384,000 per frame) that the compiler cannot eliminate when using stepped byte offsets. Replacing them with `unsafe.Slice` `[]uint32` row views lets the compiler prove the bounds statically, removing all per-pixel checks. The rotate branch was also hoisted outside both loops.
 
+**Stage 4 — ABGR8888 format + hardware rotation**
+
+Querying the DRM plane's supported fourcc formats revealed ABGR8888 (`AB24`), which matches Go's `image.RGBA` memory layout exactly (R at byte[0], G at byte[1], B at byte[2], A at byte[3]). Switching from XRGB8888 to ABGR8888 via `DRM_IOCTL_MODE_ADDFB2` eliminates the per-pixel R/B channel swap entirely, replacing the inner loop with a plain `copy` of each row. The DRM plane's `rotation` property (`DRM_MODE_ROTATE_180`) is set at startup via `DRM_IOCTL_MODE_OBJ_SETPROPERTY`, offloading 180° rotation to the display controller and making the rotated and non-rotated blit paths identical.
+
 | Path | Time/frame | vs original |
 |---|---|---|
 | fbdev 16bpp (original) | 53.2 ms | baseline |
 | fbdev 16bpp (stage 1) | 39.6 ms | −26% |
 | fbdev 32bpp (stage 1) | 34.6 ms | −35% |
 | DRM XRGB8888 (stage 2) | 28.7 ms | −46% |
-| DRM XRGB8888 (stage 3) | **8.6 ms** | **−84%** |
+| DRM XRGB8888 (stage 3) | 8.6 ms | −84% |
+| DRM ABGR8888, sw rotate (stage 3) | 4.93 ms | −91% |
+| DRM ABGR8888 + hw rotate (stage 4) | **1.66 ms** | **−97%** |
 
 ## Building
 
