@@ -1,7 +1,8 @@
-// drm_linux.go drives the display via DRM/KMS, writing XRGB8888 dumb buffers.
-// This is preferred over the fbdev path because the pixel-format conversion
-// (RGBA → XRGB8888) is a simple R/B channel swap rather than a full RGB565
-// dither, and the display controller handles the rest.
+// drm_linux.go drives the display via DRM/KMS, writing ABGR8888 dumb buffers.
+// ABGR8888 matches Go's image.RGBA memory layout exactly (R at byte[0], G at
+// byte[1], B at byte[2], A at byte[3]), so pixels can be written without any
+// channel conversion. The legacy ADDFB path (which implied XRGB8888) is
+// replaced by ADDFB2, which accepts an explicit fourcc pixel format.
 package main
 
 import (
@@ -18,6 +19,11 @@ import (
 // bits 15-8 = type ('d'=0x64 for DRM), bits 7-0 = command number.
 func drmIoWR(nr, size uintptr) uintptr {
 	return (3 << 30) | (size << 16) | (0x64 << 8) | nr
+}
+
+// drmIoW builds a DRM ioctl request number for a write-only ioctl (direction=1).
+func drmIoW(nr, size uintptr) uintptr {
+	return (1 << 30) | (size << 16) | (0x64 << 8) | nr
 }
 
 // The following structs mirror the Linux kernel UAPI headers in <drm/drm_mode.h>.
@@ -105,16 +111,24 @@ type drmModeMapDumb struct {
 	Offset uint64
 }
 
-// drmModeFBCmd mirrors struct drm_mode_fb_cmd (legacy ADDFB).
-type drmModeFBCmd struct {
-	FbID   uint32
-	Width  uint32
-	Height uint32
-	Pitch  uint32
-	Bpp    uint32
-	Depth  uint32
-	Handle uint32
+// drmModeFBCmd2 mirrors struct drm_mode_fb_cmd2 (ADDFB2, supports explicit fourcc).
+// The 4-byte padding before Modifier matches the C struct's alignment of __u64.
+type drmModeFBCmd2 struct {
+	FbID        uint32
+	Width       uint32
+	Height      uint32
+	PixelFormat uint32
+	Flags       uint32
+	Handles     [4]uint32
+	Pitches     [4]uint32
+	Offsets     [4]uint32
+	_           [4]byte    // padding: offsets ends at byte 68, modifier needs 8-byte alignment
+	Modifier    [4]uint64
 }
+
+// drmFormatABGR8888 is DRM_FORMAT_ABGR8888 = fourcc_code('A','B','2','4').
+// Memory layout: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A — matches image.RGBA.Pix.
+const drmFormatABGR8888 = uint32('A') | uint32('B')<<8 | uint32('2')<<16 | uint32('4')<<24
 
 // drmModeCrtc mirrors struct drm_mode_crtc.
 type drmModeCrtc struct {
@@ -134,16 +148,90 @@ type drmModeDestroyDumb struct {
 	Handle uint32
 }
 
+// drmSetClientCap mirrors struct drm_set_client_cap (from drm.h).
+type drmSetClientCap struct {
+	Capability uint64
+	Value      uint64
+}
+
+// drmModeGetPlaneRes mirrors struct drm_mode_get_plane_res.
+type drmModeGetPlaneRes struct {
+	PlaneIDPtr  uint64
+	CountPlanes uint32
+}
+
+// drmModeGetPlane mirrors struct drm_mode_get_plane.
+type drmModeGetPlane struct {
+	PlaneID          uint32
+	CrtcID           uint32
+	FbID             uint32
+	PossibleCrtcs    uint32
+	GammaSize        uint32
+	CountFormatTypes uint32
+	FormatTypePtr    uint64
+}
+
+// drmModeObjSetProperty mirrors struct drm_mode_obj_set_property.
+type drmModeObjSetProperty struct {
+	Value   uint64
+	PropID  uint32
+	ObjID   uint32
+	ObjType uint32
+	Pad     uint32
+}
+
+// drmModeObjGetProperties mirrors struct drm_mode_obj_get_properties.
+type drmModeObjGetProperties struct {
+	PropsPtr      uint64
+	PropValuesPtr uint64
+	CountProps    uint32
+	ObjID         uint32
+	ObjType       uint32
+	Pad           uint32
+}
+
+// drmModeGetProperty mirrors struct drm_mode_get_property.
+// Name is a fixed 32-byte field (DRM_PROP_NAME_LEN).
+type drmModeGetProperty struct {
+	ValuesPtr     uint64
+	EnumBlobPtr   uint64
+	PropID        uint32
+	Flags         uint32
+	Name          [32]byte
+	CountValues   uint32
+	CountEnumBlobs uint32
+}
+
+// drmClientCapUniversalPlanes requests visibility of primary and cursor planes
+// in addition to overlay planes (from drm.h: DRM_CLIENT_CAP_UNIVERSAL_PLANES=2).
+const drmClientCapUniversalPlanes = 2
+
+// drmModeObjectPlane is the DRM object type for planes (from drm_mode.h).
+const drmModeObjectPlane = 0xeeeeeeee
+
+// drmModeRotate0 and drmModeRotate180 are values for the DRM "rotation"
+// plane property (from drm_mode.h: DRM_MODE_ROTATE_0=bit0, DRM_MODE_ROTATE_180=bit2).
+const (
+	drmModeRotate0   = uint64(1 << 0)
+	drmModeRotate180 = uint64(1 << 2)
+)
+
 // ioctl request numbers, computed from struct sizes at init time.
 var (
+	ioctlSetClientCap     = drmIoW(0x0D, unsafe.Sizeof(drmSetClientCap{}))
 	ioctlModeGetResources = drmIoWR(0xA0, unsafe.Sizeof(drmModeRes{}))
 	ioctlModeGetConnector = drmIoWR(0xA7, unsafe.Sizeof(drmModeGetConnector{}))
 	ioctlModeGetEncoder   = drmIoWR(0xA6, unsafe.Sizeof(drmModeGetEncoder{}))
 	ioctlModeCreateDumb   = drmIoWR(0xB2, unsafe.Sizeof(drmModeCreateDumb{}))
 	ioctlModeMapDumb      = drmIoWR(0xB3, unsafe.Sizeof(drmModeMapDumb{}))
-	ioctlModeAddFB        = drmIoWR(0xAE, unsafe.Sizeof(drmModeFBCmd{}))
+	ioctlModeAddFB2       = drmIoWR(0xB8, unsafe.Sizeof(drmModeFBCmd2{}))
 	ioctlModeSetCRTC      = drmIoWR(0xA2, unsafe.Sizeof(drmModeCrtc{}))
 	ioctlModeDestroyDumb  = drmIoWR(0xB4, unsafe.Sizeof(drmModeDestroyDumb{}))
+	ioctlModeGetPlaneRes      = drmIoWR(0xB5, unsafe.Sizeof(drmModeGetPlaneRes{}))
+	ioctlModeGetPlane         = drmIoWR(0xB6, unsafe.Sizeof(drmModeGetPlane{}))
+	ioctlModeObjGetProperties = drmIoWR(0xB9, unsafe.Sizeof(drmModeObjGetProperties{}))
+	ioctlModeObjSetProperty   = drmIoWR(0xBA, unsafe.Sizeof(drmModeObjSetProperty{}))
+	ioctlModeGetProperty      = drmIoWR(0xAA, unsafe.Sizeof(drmModeGetProperty{}))
 )
 
 func drmIoctl(fd uintptr, req uintptr, arg unsafe.Pointer) error {
@@ -164,14 +252,200 @@ type drmDevice struct {
 	data   []byte
 }
 
+// fourccToString converts a DRM fourcc format code to its 4-character ASCII name.
+func fourccToString(f uint32) string {
+	return string([]byte{byte(f), byte(f >> 8), byte(f >> 16), byte(f >> 24)})
+}
+
+// logPlaneFormats logs the fourcc pixel formats supported by each DRM plane.
+// It first sets DRM_CLIENT_CAP_UNIVERSAL_PLANES so that primary and cursor
+// planes are included alongside overlay planes.
+func logPlaneFormats(fd uintptr) {
+	cap := drmSetClientCap{Capability: drmClientCapUniversalPlanes, Value: 1}
+	err := drmIoctl(fd, ioctlSetClientCap, unsafe.Pointer(&cap))
+	if err != nil {
+		slog.Warn("DRM_IOCTL_SET_CLIENT_CAP universal_planes", "err", err)
+	}
+
+	var res drmModeGetPlaneRes
+	err = drmIoctl(fd, ioctlModeGetPlaneRes, unsafe.Pointer(&res))
+	if err != nil {
+		slog.Warn("DRM_IOCTL_MODE_GETPLANERESOURCES", "err", err)
+		return
+	}
+	if res.CountPlanes == 0 {
+		slog.Info("DRM planes: none reported")
+		return
+	}
+
+	planeIDs := make([]uint32, res.CountPlanes)
+	res.PlaneIDPtr = uint64(uintptr(unsafe.Pointer(&planeIDs[0])))
+	err = drmIoctl(fd, ioctlModeGetPlaneRes, unsafe.Pointer(&res))
+	if err != nil {
+		slog.Warn("DRM_IOCTL_MODE_GETPLANERESOURCES (ids)", "err", err)
+		return
+	}
+
+	for _, id := range planeIDs {
+		plane := drmModeGetPlane{PlaneID: id}
+		err = drmIoctl(fd, ioctlModeGetPlane, unsafe.Pointer(&plane))
+		if err != nil || plane.CountFormatTypes == 0 {
+			continue
+		}
+		formats := make([]uint32, plane.CountFormatTypes)
+		plane.FormatTypePtr = uint64(uintptr(unsafe.Pointer(&formats[0])))
+		err = drmIoctl(fd, ioctlModeGetPlane, unsafe.Pointer(&plane))
+		if err != nil {
+			continue
+		}
+		names := make([]string, len(formats))
+		for i, f := range formats {
+			names[i] = fourccToString(f)
+		}
+		rotation := planeRotationProperty(fd, id)
+		slog.Info("DRM plane", "id", id, "possible_crtcs", fmt.Sprintf("0x%x", plane.PossibleCrtcs), "formats", names, "rotation_prop", rotation)
+	}
+}
+
+// planeRotationProperty returns a description of the "rotation" property on
+// the given plane, or "none" if the driver does not expose one.
+func planeRotationProperty(fd uintptr, planeID uint32) string {
+	obj := drmModeObjGetProperties{ObjID: planeID, ObjType: drmModeObjectPlane}
+	err := drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
+	if err != nil || obj.CountProps == 0 {
+		return "none"
+	}
+	propIDs := make([]uint32, obj.CountProps)
+	propVals := make([]uint64, obj.CountProps)
+	obj.PropsPtr = uint64(uintptr(unsafe.Pointer(&propIDs[0])))
+	obj.PropValuesPtr = uint64(uintptr(unsafe.Pointer(&propVals[0])))
+	err = drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
+	if err != nil {
+		return "none"
+	}
+	for i, pid := range propIDs {
+		prop := drmModeGetProperty{PropID: pid}
+		err = drmIoctl(fd, ioctlModeGetProperty, unsafe.Pointer(&prop))
+		if err != nil {
+			continue
+		}
+		name := nullTermString(prop.Name[:])
+		if name == "rotation" {
+			return fmt.Sprintf("prop_id=%d value=0x%x", pid, propVals[i])
+		}
+	}
+	return "none"
+}
+
+// nullTermString returns the string up to the first null byte in b.
+func nullTermString(b []byte) string {
+	for i, c := range b {
+		if c == 0 {
+			return string(b[:i])
+		}
+	}
+	return string(b)
+}
+
+// setPlaneRotation finds the primary plane for crtcID and sets its DRM
+// "rotation" property to DRM_MODE_ROTATE_180 or DRM_MODE_ROTATE_0.
+// crtcIDs is the ordered list from DRM_IOCTL_MODE_GETRESOURCES; the index
+// of crtcID in that list determines which bit to match in PossibleCrtcs.
+func setPlaneRotation(fd uintptr, crtcID uint32, crtcIDs []uint32, rotate bool) {
+	crtcBit := uint32(0)
+	for i, id := range crtcIDs {
+		if id == crtcID {
+			crtcBit = 1 << uint(i)
+			break
+		}
+	}
+	if crtcBit == 0 {
+		slog.Warn("DRM setPlaneRotation: crtcID not in resource list", "crtcID", crtcID)
+		return
+	}
+
+	var planeRes drmModeGetPlaneRes
+	err := drmIoctl(fd, ioctlModeGetPlaneRes, unsafe.Pointer(&planeRes))
+	if err != nil || planeRes.CountPlanes == 0 {
+		return
+	}
+	planeIDs := make([]uint32, planeRes.CountPlanes)
+	planeRes.PlaneIDPtr = uint64(uintptr(unsafe.Pointer(&planeIDs[0])))
+	err = drmIoctl(fd, ioctlModeGetPlaneRes, unsafe.Pointer(&planeRes))
+	if err != nil {
+		return
+	}
+
+	planeID := uint32(0)
+	for _, id := range planeIDs {
+		p := drmModeGetPlane{PlaneID: id}
+		err = drmIoctl(fd, ioctlModeGetPlane, unsafe.Pointer(&p))
+		if err != nil {
+			continue
+		}
+		if p.PossibleCrtcs&crtcBit != 0 {
+			planeID = id
+			break
+		}
+	}
+	if planeID == 0 {
+		slog.Warn("DRM setPlaneRotation: no plane found for CRTC", "crtcID", crtcID)
+		return
+	}
+
+	obj := drmModeObjGetProperties{ObjID: planeID, ObjType: drmModeObjectPlane}
+	err = drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
+	if err != nil || obj.CountProps == 0 {
+		return
+	}
+	propIDs := make([]uint32, obj.CountProps)
+	propVals := make([]uint64, obj.CountProps)
+	obj.PropsPtr = uint64(uintptr(unsafe.Pointer(&propIDs[0])))
+	obj.PropValuesPtr = uint64(uintptr(unsafe.Pointer(&propVals[0])))
+	err = drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
+	if err != nil {
+		return
+	}
+
+	rotPropID := uint32(0)
+	for _, pid := range propIDs {
+		prop := drmModeGetProperty{PropID: pid}
+		err = drmIoctl(fd, ioctlModeGetProperty, unsafe.Pointer(&prop))
+		if err != nil {
+			continue
+		}
+		if nullTermString(prop.Name[:]) == "rotation" {
+			rotPropID = pid
+			break
+		}
+	}
+	if rotPropID == 0 {
+		slog.Warn("DRM setPlaneRotation: rotation property not found", "planeID", planeID)
+		return
+	}
+
+	value := drmModeRotate0
+	if rotate {
+		value = drmModeRotate180
+	}
+	set := drmModeObjSetProperty{Value: value, PropID: rotPropID, ObjID: planeID, ObjType: drmModeObjectPlane}
+	err = drmIoctl(fd, ioctlModeObjSetProperty, unsafe.Pointer(&set))
+	if err != nil {
+		slog.Warn("DRM_IOCTL_MODE_OBJ_SETPROPERTY rotation", "err", err)
+		return
+	}
+	slog.Info("DRM plane rotation set", "planeID", planeID, "rotate180", rotate)
+}
+
 // openDRM opens the DRM device, finds the first connected connector, creates a
 // 32 bpp dumb buffer, registers it as a framebuffer and sets the CRTC.
-func openDRM(dev string) (*drmDevice, error) {
+func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	f, err := os.OpenFile(dev, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", dev, err)
 	}
 	fd := f.Fd()
+	logPlaneFormats(fd)
 
 	// First call: discover how many connectors exist.
 	var res drmModeRes
@@ -185,15 +459,14 @@ func openDRM(dev string) (*drmDevice, error) {
 		return nil, fmt.Errorf("no DRM connectors found")
 	}
 
-	// Second call: fetch only the connector ID list. Zero out the counts and
-	// pointers for fbs, crtcs, and encoders so the kernel doesn't try to write
-	// them to address 0 (which would return EFAULT).
+	// Second call: fetch connector and CRTC ID lists. Zero out fbs and encoders
+	// so the kernel doesn't write them to address 0 (which would return EFAULT).
 	connectorIDs := make([]uint32, res.CountConnectors)
+	crtcIDs := make([]uint32, res.CountCrtcs)
 	res.ConnectorIDPtr = uint64(uintptr(unsafe.Pointer(&connectorIDs[0])))
+	res.CrtcIDPtr = uint64(uintptr(unsafe.Pointer(&crtcIDs[0])))
 	res.CountFbs = 0
 	res.FbIDPtr = 0
-	res.CountCrtcs = 0
-	res.CrtcIDPtr = 0
 	res.CountEncoders = 0
 	res.EncoderIDPtr = 0
 	err = drmIoctl(fd, ioctlModeGetResources, unsafe.Pointer(&res))
@@ -264,20 +537,20 @@ func openDRM(dev string) (*drmDevice, error) {
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_CREATE_DUMB: %w", err)
 	}
 
-	// Register it as a DRM framebuffer (legacy ADDFB; bpp=32 depth=24 → XRGB8888).
-	var fb drmModeFBCmd
+	// Register it as a DRM framebuffer using ADDFB2 with explicit ABGR8888 fourcc.
+	// ABGR8888 matches Go's image.RGBA memory layout so no pixel conversion is needed.
+	var fb drmModeFBCmd2
 	fb.Width = uint32(width)
 	fb.Height = uint32(height)
-	fb.Pitch = dumb.Pitch
-	fb.Bpp = 32
-	fb.Depth = 24
-	fb.Handle = dumb.Handle
-	err = drmIoctl(fd, ioctlModeAddFB, unsafe.Pointer(&fb))
+	fb.PixelFormat = drmFormatABGR8888
+	fb.Handles[0] = dumb.Handle
+	fb.Pitches[0] = dumb.Pitch
+	err = drmIoctl(fd, ioctlModeAddFB2, unsafe.Pointer(&fb))
 	if err != nil {
 		destroy := drmModeDestroyDumb{Handle: dumb.Handle}
 		drmIoctl(fd, ioctlModeDestroyDumb, unsafe.Pointer(&destroy))
 		f.Close()
-		return nil, fmt.Errorf("DRM_IOCTL_MODE_ADDFB: %w", err)
+		return nil, fmt.Errorf("DRM_IOCTL_MODE_ADDFB2: %w", err)
 	}
 
 	// Get the mmap offset for the dumb buffer.
@@ -314,6 +587,7 @@ func openDRM(dev string) (*drmDevice, error) {
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_SETCRTC: %w", err)
 	}
 
+	setPlaneRotation(fd, crtcID, crtcIDs, rotate)
 	slog.Info("DRM display", "width", width, "height", height,
 		"stride", dumb.Pitch, "crtc", crtcID)
 
@@ -336,40 +610,23 @@ func (d *drmDevice) close() {
 	d.file.Close()
 }
 
-// swapRB converts a pixel from RGBA (R|G<<8|B<<16|A<<24) to
-// XRGB8888 (B|G<<8|R<<16) by swapping the R and B channels.
-func swapRB(src uint32) uint32 {
-	return (src & 0x0000FF00) | (src&0x000000FF)<<16 | (src>>16)&0xFF
-}
-
 // rowU32 returns a []uint32 view over n pixels starting at byte offset off in b.
 // All pixel offsets are multiples of 4, so the cast is always aligned.
 func rowU32(b []byte, off, n int) []uint32 {
 	return unsafe.Slice((*uint32)(unsafe.Pointer(&b[off])), n)
 }
 
-// blit copies img to the DRM dumb buffer in XRGB8888 format.
+// blit copies img to the DRM dumb buffer.
 //
-// XRGB8888 in little-endian memory: byte[0]=B, byte[1]=G, byte[2]=R, byte[3]=X.
-// image.RGBA.Pix layout:            byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A.
-// Each pixel is a uint32 R/B swap; no dithering required.
-// unsafe.Slice views eliminate per-pixel bounds checks from binary.LittleEndian.
-func (d *drmDevice) blit(img *image.RGBA, rotate bool) {
-	if rotate {
-		for y := 0; y < d.height; y++ {
-			src := rowU32(img.Pix, y*img.Stride, d.width)
-			dst := rowU32(d.data, (d.height-1-y)*d.stride, d.width)
-			for x := 0; x < d.width; x++ {
-				dst[d.width-1-x] = swapRB(src[x])
-			}
-		}
-	} else {
-		for y := 0; y < d.height; y++ {
-			src := rowU32(img.Pix, y*img.Stride, d.width)
-			dst := rowU32(d.data, y*d.stride, d.width)
-			for x := 0; x < d.width; x++ {
-				dst[x] = swapRB(src[x])
-			}
-		}
+// The framebuffer uses ABGR8888, which has the same memory layout as
+// image.RGBA.Pix (byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A), so pixels
+// are written directly with no channel conversion. Rotation is handled by
+// the hardware via the plane "rotation" property set at init time.
+// unsafe.Slice views eliminate per-pixel bounds checks.
+func (d *drmDevice) blit(img *image.RGBA, _ bool) {
+	for y := 0; y < d.height; y++ {
+		src := rowU32(img.Pix, y*img.Stride, d.width)
+		dst := rowU32(d.data, y*d.stride, d.width)
+		copy(dst, src)
 	}
 }
