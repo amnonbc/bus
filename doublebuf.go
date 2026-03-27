@@ -83,17 +83,21 @@ func (fb *frameBuffer) publishFrame() {
 // blitter writes a rendered frame to a hardware display (e.g. framebuffer).
 // noopBlitter is used on platforms with no physical display.
 type blitter interface {
-	blit(img *image.RGBA, rotate bool)
+	Width() int
+	Height() int
+	Blit(img *image.RGBA)
 }
 
 type noopBlitter struct{}
 
-func (noopBlitter) blit(*image.RGBA, bool) {}
+func (noopBlitter) Width() int       { return 0 }
+func (noopBlitter) Height() int      { return 0 }
+func (noopBlitter) Blit(*image.RGBA) {}
 
 // runLoop is the shared render loop used on all platforms. It renders a frame
 // each tick (or immediately on notify), publishes it via double buffering for
 // the HTTP preview, and passes it to hw for hardware display if provided.
-func runLoop(buf *frameBuffer, active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], bigFace, smallFace xfont.Face, hw blitter, rotate bool, notify <-chan struct{}) {
+func runLoop(buf *frameBuffer, active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], bigFace, smallFace xfont.Face, hw blitter, notify <-chan struct{}) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	r := newRenderer()
@@ -101,7 +105,7 @@ func runLoop(buf *frameBuffer, active *atomic.Pointer[timeTable], weather *atomi
 	for {
 		back := buf.backBuf()
 		animating := r.renderFrame(back, bigFace, smallFace, active.Load(), *weather.Load())
-		hw.blit(back, rotate)
+		hw.Blit(back)
 		buf.publishFrame()
 		if animating != wasAnimating {
 			if animating {
