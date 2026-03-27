@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"log/slog"
@@ -307,13 +308,13 @@ func logPlaneFormats(fd uintptr) {
 	}
 }
 
-// planeRotationProperty returns a description of the "rotation" property on
-// the given plane, or "none" if the driver does not expose one.
-func planeRotationProperty(fd uintptr, planeID uint32) string {
+// findPropID returns the property ID of the named property on the given plane,
+// its current value, and whether it was found.
+func findPropID(fd uintptr, planeID uint32, name string) (propID uint32, value uint64, found bool) {
 	obj := drmModeObjGetProperties{ObjID: planeID, ObjType: drmModeObjectPlane}
 	err := drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
 	if err != nil || obj.CountProps == 0 {
-		return "none"
+		return 0, 0, false
 	}
 	propIDs := make([]uint32, obj.CountProps)
 	propVals := make([]uint64, obj.CountProps)
@@ -321,7 +322,7 @@ func planeRotationProperty(fd uintptr, planeID uint32) string {
 	obj.PropValuesPtr = uint64(uintptr(unsafe.Pointer(&propVals[0])))
 	err = drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
 	if err != nil {
-		return "none"
+		return 0, 0, false
 	}
 	for i, pid := range propIDs {
 		prop := drmModeGetProperty{PropID: pid}
@@ -329,20 +330,27 @@ func planeRotationProperty(fd uintptr, planeID uint32) string {
 		if err != nil {
 			continue
 		}
-		name := nullTermString(prop.Name[:])
-		if name == "rotation" {
-			return fmt.Sprintf("prop_id=%d value=0x%x", pid, propVals[i])
+		if nullTermString(prop.Name[:]) == name {
+			return pid, propVals[i], true
 		}
 	}
-	return "none"
+	return 0, 0, false
+}
+
+// planeRotationProperty returns a description of the "rotation" property on
+// the given plane, or "none" if the driver does not expose one.
+func planeRotationProperty(fd uintptr, planeID uint32) string {
+	pid, value, ok := findPropID(fd, planeID, "rotation")
+	if !ok {
+		return "none"
+	}
+	return fmt.Sprintf("prop_id=%d value=0x%x", pid, value)
 }
 
 // nullTermString returns the string up to the first null byte in b.
 func nullTermString(b []byte) string {
-	for i, c := range b {
-		if c == 0 {
-			return string(b[:i])
-		}
+	if i := bytes.IndexByte(b, 0); i >= 0 {
+		return string(b[:i])
 	}
 	return string(b)
 }
@@ -393,33 +401,8 @@ func setPlaneRotation(fd uintptr, crtcID uint32, crtcIDs []uint32, rotate bool) 
 		return
 	}
 
-	obj := drmModeObjGetProperties{ObjID: planeID, ObjType: drmModeObjectPlane}
-	err = drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
-	if err != nil || obj.CountProps == 0 {
-		return
-	}
-	propIDs := make([]uint32, obj.CountProps)
-	propVals := make([]uint64, obj.CountProps)
-	obj.PropsPtr = uint64(uintptr(unsafe.Pointer(&propIDs[0])))
-	obj.PropValuesPtr = uint64(uintptr(unsafe.Pointer(&propVals[0])))
-	err = drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
-	if err != nil {
-		return
-	}
-
-	rotPropID := uint32(0)
-	for _, pid := range propIDs {
-		prop := drmModeGetProperty{PropID: pid}
-		err = drmIoctl(fd, ioctlModeGetProperty, unsafe.Pointer(&prop))
-		if err != nil {
-			continue
-		}
-		if nullTermString(prop.Name[:]) == "rotation" {
-			rotPropID = pid
-			break
-		}
-	}
-	if rotPropID == 0 {
+	rotPropID, _, ok := findPropID(fd, planeID, "rotation")
+	if !ok {
 		slog.Warn("DRM setPlaneRotation: rotation property not found", "planeID", planeID)
 		return
 	}
@@ -604,8 +587,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 
 func (d *drmDevice) close() {
 	syscall.Munmap(d.data)
-	var destroy drmModeDestroyDumb
-	destroy.Handle = d.handle
+	destroy := drmModeDestroyDumb{Handle: d.handle}
 	drmIoctl(d.fd, ioctlModeDestroyDumb, unsafe.Pointer(&destroy))
 	d.file.Close()
 }
