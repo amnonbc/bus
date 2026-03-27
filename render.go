@@ -16,8 +16,10 @@ import (
 )
 
 const (
-	slotHeight     = 130
-	scrollDuration = 5 * time.Second
+	slotHeight      = 130
+	scrollDuration  = 5 * time.Second
+	busListY        = 150 // Y baseline of the first bus row, below the header band
+	maxVisibleBuses = 3   // bus rows shown when not animating
 )
 
 // smoothstep maps t ∈ [0,1] to [0,1] with zero first-derivative at both
@@ -150,13 +152,13 @@ func (r *renderer) advanceScroll(liveBuses []Bus, now time.Time) (buses []Bus, y
 // scrollLayout returns the drawing parameters for the bus list.
 func (r *renderer) scrollLayout(firstIdx, yOffset int) (startIdx, startY, maxBuses int) {
 	if !r.isAnimating() {
-		return firstIdx, 150, 3
+		return firstIdx, busListY, maxVisibleBuses
 	}
 	startIdx = firstIdx
 	if firstIdx > 0 {
 		startIdx = firstIdx - 1
 	}
-	return startIdx, 150 - (slotHeight - yOffset), 4
+	return startIdx, busListY - (slotHeight - yOffset), maxVisibleBuses + 1
 }
 
 // drawBuses renders the bus arrival rows onto img.
@@ -171,11 +173,13 @@ func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, max
 		if d < 0 && !r.isAnimating() {
 			continue
 		}
-		drawString(img, r.bigFace, r.border, y, b.Number, image.White)
-		etaStr := d.String()
+		var etaStr string
 		if d < 0 {
 			etaStr = "Due"
+		} else {
+			etaStr = d.String()
 		}
+		drawString(img, r.bigFace, r.border, y, b.Number, image.White)
 		rightX := img.Bounds().Max.X - r.border - measureString(r.bigFace, etaStr)
 		drawString(img, r.bigFace, rightX, y, etaStr, image.White)
 		y += slotHeight
@@ -192,7 +196,10 @@ func (r *renderer) drawFooter(img *image.RGBA, weatherStr string) {
 	drawString(img, r.smallFace, w-r.border-measureString(r.smallFace, timeStr), y, timeStr, image.White)
 }
 
-var headerColour = image.NewUniform(color.Gray{Y: 180})
+var (
+	headerColour = image.NewUniform(color.Gray{Y: 180})
+	blackUniform = image.NewUniform(color.Black)
+)
 
 // drawHeader renders the stop name and direction onto the top of img.
 func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
@@ -219,7 +226,7 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 		r.scrollBuses = nil
 	}
 
-	draw.Draw(img, img.Bounds(), image.NewUniform(color.Black), image.Point{}, draw.Src)
+	draw.Draw(img, img.Bounds(), blackUniform, image.Point{}, draw.Src)
 
 	buses, yOffset := r.advanceScroll(tt.getBuses(), time.Now())
 	startIdx, startY, maxBuses := r.scrollLayout(firstIdxOf(buses), yOffset)
@@ -227,9 +234,8 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 
 	// Blank header and footer bands so scrolling bus rows cannot overwrite them.
 	const headerH, footerH = 40, 40
-	black := image.NewUniform(color.Black)
-	draw.Draw(img, image.Rect(0, 0, w, headerH), black, image.Point{}, draw.Src)
-	draw.Draw(img, image.Rect(0, h-footerH, w, h), black, image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, 0, w, headerH), blackUniform, image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, h-footerH, w, h), blackUniform, image.Point{}, draw.Src)
 
 	// Header and footer drawn last so they always appear on top of bus rows.
 	r.drawHeader(img, tt)
