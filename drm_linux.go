@@ -235,8 +235,8 @@ var (
 	ioctlModeGetProperty      = drmIoWR(0xAA, unsafe.Sizeof(drmModeGetProperty{}))
 )
 
-func drmIoctl(fd uintptr, req uintptr, arg unsafe.Pointer) error {
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, req, uintptr(arg))
+func drmIoctl[T any](fd uintptr, req uintptr, arg *T) error {
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, req, uintptr(unsafe.Pointer(arg)))
 	if errno != 0 {
 		return errno
 	}
@@ -263,13 +263,13 @@ func fourccToString(f uint32) string {
 // planes are included alongside overlay planes.
 func logPlaneFormats(fd uintptr) {
 	cap := drmSetClientCap{Capability: drmClientCapUniversalPlanes, Value: 1}
-	err := drmIoctl(fd, ioctlSetClientCap, unsafe.Pointer(&cap))
+	err := drmIoctl(fd, ioctlSetClientCap, &cap)
 	if err != nil {
 		slog.Warn("DRM_IOCTL_SET_CLIENT_CAP universal_planes", "err", err)
 	}
 
 	var res drmModeGetPlaneRes
-	err = drmIoctl(fd, ioctlModeGetPlaneRes, unsafe.Pointer(&res))
+	err = drmIoctl(fd, ioctlModeGetPlaneRes, &res)
 	if err != nil {
 		slog.Warn("DRM_IOCTL_MODE_GETPLANERESOURCES", "err", err)
 		return
@@ -281,7 +281,7 @@ func logPlaneFormats(fd uintptr) {
 
 	planeIDs := make([]uint32, res.CountPlanes)
 	res.PlaneIDPtr = uint64(uintptr(unsafe.Pointer(&planeIDs[0])))
-	err = drmIoctl(fd, ioctlModeGetPlaneRes, unsafe.Pointer(&res))
+	err = drmIoctl(fd, ioctlModeGetPlaneRes, &res)
 	if err != nil {
 		slog.Warn("DRM_IOCTL_MODE_GETPLANERESOURCES (ids)", "err", err)
 		return
@@ -289,13 +289,13 @@ func logPlaneFormats(fd uintptr) {
 
 	for _, id := range planeIDs {
 		plane := drmModeGetPlane{PlaneID: id}
-		err = drmIoctl(fd, ioctlModeGetPlane, unsafe.Pointer(&plane))
+		err = drmIoctl(fd, ioctlModeGetPlane, &plane)
 		if err != nil || plane.CountFormatTypes == 0 {
 			continue
 		}
 		formats := make([]uint32, plane.CountFormatTypes)
 		plane.FormatTypePtr = uint64(uintptr(unsafe.Pointer(&formats[0])))
-		err = drmIoctl(fd, ioctlModeGetPlane, unsafe.Pointer(&plane))
+		err = drmIoctl(fd, ioctlModeGetPlane, &plane)
 		if err != nil {
 			continue
 		}
@@ -312,7 +312,7 @@ func logPlaneFormats(fd uintptr) {
 // its current value, and whether it was found.
 func findPropID(fd uintptr, planeID uint32, name string) (propID uint32, value uint64, found bool) {
 	obj := drmModeObjGetProperties{ObjID: planeID, ObjType: drmModeObjectPlane}
-	err := drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
+	err := drmIoctl(fd, ioctlModeObjGetProperties, &obj)
 	if err != nil || obj.CountProps == 0 {
 		return 0, 0, false
 	}
@@ -320,13 +320,13 @@ func findPropID(fd uintptr, planeID uint32, name string) (propID uint32, value u
 	propVals := make([]uint64, obj.CountProps)
 	obj.PropsPtr = uint64(uintptr(unsafe.Pointer(&propIDs[0])))
 	obj.PropValuesPtr = uint64(uintptr(unsafe.Pointer(&propVals[0])))
-	err = drmIoctl(fd, ioctlModeObjGetProperties, unsafe.Pointer(&obj))
+	err = drmIoctl(fd, ioctlModeObjGetProperties, &obj)
 	if err != nil {
 		return 0, 0, false
 	}
 	for i, pid := range propIDs {
 		prop := drmModeGetProperty{PropID: pid}
-		err = drmIoctl(fd, ioctlModeGetProperty, unsafe.Pointer(&prop))
+		err = drmIoctl(fd, ioctlModeGetProperty, &prop)
 		if err != nil {
 			continue
 		}
@@ -373,13 +373,13 @@ func setPlaneRotation(fd uintptr, crtcID uint32, crtcIDs []uint32, rotate bool) 
 	}
 
 	var planeRes drmModeGetPlaneRes
-	err := drmIoctl(fd, ioctlModeGetPlaneRes, unsafe.Pointer(&planeRes))
+	err := drmIoctl(fd, ioctlModeGetPlaneRes, &planeRes)
 	if err != nil || planeRes.CountPlanes == 0 {
 		return
 	}
 	planeIDs := make([]uint32, planeRes.CountPlanes)
 	planeRes.PlaneIDPtr = uint64(uintptr(unsafe.Pointer(&planeIDs[0])))
-	err = drmIoctl(fd, ioctlModeGetPlaneRes, unsafe.Pointer(&planeRes))
+	err = drmIoctl(fd, ioctlModeGetPlaneRes, &planeRes)
 	if err != nil {
 		return
 	}
@@ -387,7 +387,7 @@ func setPlaneRotation(fd uintptr, crtcID uint32, crtcIDs []uint32, rotate bool) 
 	planeID := uint32(0)
 	for _, id := range planeIDs {
 		p := drmModeGetPlane{PlaneID: id}
-		err = drmIoctl(fd, ioctlModeGetPlane, unsafe.Pointer(&p))
+		err = drmIoctl(fd, ioctlModeGetPlane, &p)
 		if err != nil {
 			continue
 		}
@@ -412,7 +412,7 @@ func setPlaneRotation(fd uintptr, crtcID uint32, crtcIDs []uint32, rotate bool) 
 		value = drmModeRotate180
 	}
 	set := drmModeObjSetProperty{Value: value, PropID: rotPropID, ObjID: planeID, ObjType: drmModeObjectPlane}
-	err = drmIoctl(fd, ioctlModeObjSetProperty, unsafe.Pointer(&set))
+	err = drmIoctl(fd, ioctlModeObjSetProperty, &set)
 	if err != nil {
 		slog.Warn("DRM_IOCTL_MODE_OBJ_SETPROPERTY rotation", "err", err)
 		return
@@ -432,7 +432,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 
 	// First call: discover how many connectors exist.
 	var res drmModeRes
-	err = drmIoctl(fd, ioctlModeGetResources, unsafe.Pointer(&res))
+	err = drmIoctl(fd, ioctlModeGetResources, &res)
 	if err != nil {
 		f.Close()
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_GETRESOURCES: %w", err)
@@ -452,7 +452,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	res.FbIDPtr = 0
 	res.CountEncoders = 0
 	res.EncoderIDPtr = 0
-	err = drmIoctl(fd, ioctlModeGetResources, unsafe.Pointer(&res))
+	err = drmIoctl(fd, ioctlModeGetResources, &res)
 	if err != nil {
 		f.Close()
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_GETRESOURCES (ids): %w", err)
@@ -468,7 +468,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	found := false
 	for _, id := range connectorIDs {
 		conn := drmModeGetConnector{ConnectorID: id}
-		err = drmIoctl(fd, ioctlModeGetConnector, unsafe.Pointer(&conn))
+		err = drmIoctl(fd, ioctlModeGetConnector, &conn)
 		if err != nil || conn.CountModes == 0 {
 			continue
 		}
@@ -481,7 +481,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 		conn.PropValuesPtr = 0
 		conn.CountEncoders = 0
 		conn.EncodersPtr = 0
-		err = drmIoctl(fd, ioctlModeGetConnector, unsafe.Pointer(&conn))
+		err = drmIoctl(fd, ioctlModeGetConnector, &conn)
 		if err != nil {
 			continue
 		}
@@ -499,7 +499,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	// Get the CRTC currently bound to this connector's encoder.
 	var enc drmModeGetEncoder
 	enc.EncoderID = encoderID
-	err = drmIoctl(fd, ioctlModeGetEncoder, unsafe.Pointer(&enc))
+	err = drmIoctl(fd, ioctlModeGetEncoder, &enc)
 	if err != nil {
 		f.Close()
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_GETENCODER: %w", err)
@@ -514,7 +514,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	dumb.Width = uint32(width)
 	dumb.Height = uint32(height)
 	dumb.Bpp = 32
-	err = drmIoctl(fd, ioctlModeCreateDumb, unsafe.Pointer(&dumb))
+	err = drmIoctl(fd, ioctlModeCreateDumb, &dumb)
 	if err != nil {
 		f.Close()
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_CREATE_DUMB: %w", err)
@@ -528,10 +528,10 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	fb.PixelFormat = drmFormatABGR8888
 	fb.Handles[0] = dumb.Handle
 	fb.Pitches[0] = dumb.Pitch
-	err = drmIoctl(fd, ioctlModeAddFB2, unsafe.Pointer(&fb))
+	err = drmIoctl(fd, ioctlModeAddFB2, &fb)
 	if err != nil {
 		destroy := drmModeDestroyDumb{Handle: dumb.Handle}
-		drmIoctl(fd, ioctlModeDestroyDumb, unsafe.Pointer(&destroy))
+		drmIoctl(fd, ioctlModeDestroyDumb, &destroy)
 		f.Close()
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_ADDFB2: %w", err)
 	}
@@ -539,7 +539,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	// Get the mmap offset for the dumb buffer.
 	var mapDumb drmModeMapDumb
 	mapDumb.Handle = dumb.Handle
-	err = drmIoctl(fd, ioctlModeMapDumb, unsafe.Pointer(&mapDumb))
+	err = drmIoctl(fd, ioctlModeMapDumb, &mapDumb)
 	if err != nil {
 		f.Close()
 		return nil, fmt.Errorf("DRM_IOCTL_MODE_MAP_DUMB: %w", err)
@@ -563,7 +563,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 		SetConnectorsPtr: uint64(uintptr(unsafe.Pointer(&connID))),
 		CountConnectors:  1,
 	}
-	err = drmIoctl(fd, ioctlModeSetCRTC, unsafe.Pointer(&crtc))
+	err = drmIoctl(fd, ioctlModeSetCRTC, &crtc)
 	if err != nil {
 		syscall.Munmap(data)
 		f.Close()
@@ -588,7 +588,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 func (d *drmDevice) close() {
 	syscall.Munmap(d.data)
 	destroy := drmModeDestroyDumb{Handle: d.handle}
-	drmIoctl(d.fd, ioctlModeDestroyDumb, unsafe.Pointer(&destroy))
+	drmIoctl(d.fd, ioctlModeDestroyDumb, &destroy)
 	d.file.Close()
 }
 
