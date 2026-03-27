@@ -2,7 +2,7 @@
 
 <img width="800" height="480" alt="bus" src="https://github.com/user-attachments/assets/fb81db42-0186-4042-8ce2-9c69c23f6730" />
 
-A full-screen bus arrival display that runs on a Raspberry Pi 2, showing the next buses due at a nearby stop using the [TFL Countdown](http://countdown.tfl.gov.uk/) API, along with the current weather and time.
+A full-screen bus arrival display that runs on a Raspberry Pi, showing the next buses due at a nearby stop using the [TFL Countdown](http://countdown.tfl.gov.uk/) API, along with the current weather and time. Tested on Pi 1 (ARMv6, fbdev 16 bpp) and Pi 2 (ARMv7, DRM/KMS).
 
 ## How it works
 
@@ -24,7 +24,7 @@ This requires the process to be DRM master (i.e. running on the console with no 
 If DRM setup fails for any reason (wrong permissions, no device, display server already active), the program logs a message and falls back to the fbdev path automatically.
 
 **Portability notes:**
-- Works on Pi 2/3/4/5 with `vc4-kms-v3d` overlay enabled.
+- Works on Pi 2/3/4/5 with `vc4-kms-v3d` overlay enabled. Pi 1 (ARMv6, kernel 3.x) has no DRM support and uses fbdev automatically.
 - Falls back silently on desktop Linux where a display server holds DRM master.
 - On a Pi 4 with both HDMI ports connected, HDMI0 is always used (first connected connector).
 - The encoder must already be bound to the connector at startup; if the Pi booted headless with no display attached, fbdev fallback is used instead.
@@ -71,6 +71,18 @@ go build
 ```
 
 No CGO, no system dependencies beyond a standard Go toolchain. The DRM/KMS and fbdev paths use raw Linux ioctls via the Go `syscall` package.
+
+### Cross-compilation
+
+To build for a Raspberry Pi from macOS or Linux:
+
+| Target | Command |
+|---|---|
+| Pi 2/3 (ARMv7) | `GOOS=linux GOARCH=arm GOARM=7 go build -o bus .` |
+| Pi 1 (ARMv6) | `GOOS=linux GOARCH=arm GOARM=6 go build -o bus .` |
+| Pi 4/5 (ARM64) | `GOOS=linux GOARCH=arm64 go build -o bus .` |
+
+Copy the binary to the Pi with `scp bus pi@raspberrypi:bus/bus`.
 
 ## Usage
 
