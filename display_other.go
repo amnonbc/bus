@@ -15,18 +15,11 @@ const (
 )
 
 func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], _ bool, notify <-chan struct{}, flip func()) error {
-	bigFace, err := newFace(100)
+	buf, err := newFrameBuffer(displayWidth, displayHeight, noopBlitter{})
 	if err != nil {
 		return err
 	}
-	defer bigFace.Close()
-	smallFace, err := newFace(32)
-	if err != nil {
-		return err
-	}
-	defer smallFace.Close()
-
-	buf := newFrameBuffer(displayWidth, displayHeight, bigFace, smallFace, noopBlitter{})
+	defer buf.close()
 	newHTTPPreview(buf, flip).register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()
