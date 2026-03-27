@@ -83,7 +83,7 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	q.Set("ReturnList", "StopPointName,LineName,EstimatedTime,Towards,Latitude,Longitude")
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequest("GET", u.String(), nil)
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
 		panic(err)
 	}
