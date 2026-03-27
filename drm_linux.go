@@ -610,12 +610,6 @@ func (d *drmDevice) close() {
 	d.file.Close()
 }
 
-// rowU32 returns a []uint32 view over n pixels starting at byte offset off in b.
-// All pixel offsets are multiples of 4, so the cast is always aligned.
-func rowU32(b []byte, off, n int) []uint32 {
-	return unsafe.Slice((*uint32)(unsafe.Pointer(&b[off])), n)
-}
-
 // blit copies img to the DRM dumb buffer.
 //
 // ABGR8888 matches image.RGBA.Pix exactly, so no pixel conversion is needed.
@@ -626,9 +620,10 @@ func (d *drmDevice) blit(img *image.RGBA, _ bool) {
 		copy(d.data, img.Pix[:d.height*d.stride])
 		return
 	}
+	rowBytes := d.width * 4
 	for y := 0; y < d.height; y++ {
-		src := rowU32(img.Pix, y*img.Stride, d.width)
-		dst := rowU32(d.data, y*d.stride, d.width)
+		src := img.Pix[y*img.Stride : y*img.Stride+rowBytes]
+		dst := d.data[y*d.stride : y*d.stride+rowBytes]
 		copy(dst, src)
 	}
 }
