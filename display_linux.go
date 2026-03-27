@@ -110,8 +110,10 @@ func openFB(dev string) (*fbDevice, error) {
 	bpp := int(vinfo.BitsPerPixel)
 
 	stride := width * bpp / 8
-	if raw, err := os.ReadFile("/sys/class/graphics/fb0/stride"); err == nil {
-		if n, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil && n > 0 {
+	raw, err := os.ReadFile("/sys/class/graphics/fb0/stride")
+	if err == nil {
+		n, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+		if err == nil && n > 0 {
 			stride = n
 		}
 	}
