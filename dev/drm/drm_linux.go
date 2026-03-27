@@ -1,9 +1,48 @@
-// drm_linux.go drives the display via DRM/KMS, writing ABGR8888 dumb buffers.
-// ABGR8888 matches Go's image.RGBA memory layout exactly (R at byte[0], G at
-// byte[1], B at byte[2], A at byte[3]), so pixels can be written without any
-// channel conversion. The legacy ADDFB path (which implied XRGB8888) is
-// replaced by ADDFB2, which accepts an explicit fourcc pixel format.
-package main
+// Package drm drives a display via the Linux DRM/KMS kernel subsystem using
+// raw ioctls — no libdrm or CGO required.
+//
+// # Why DRM instead of fbdev
+//
+// The simpler [fb] package writes to /dev/fb0 and works on any Linux system,
+// but it has two unavoidable costs: a per-pixel format conversion (RGBA →
+// RGB565 or XRGB8888) and, when rotating, a per-pixel address calculation.
+// On a Raspberry Pi 2 at 800×480 this takes ~53 ms per frame for 16 bpp.
+//
+// DRM eliminates both costs:
+//
+//  1. ABGR8888 pixel format (DRM_FORMAT_ABGR8888, fourcc "AB24") matches Go's
+//     image.RGBA memory layout byte-for-byte, so Blit is a plain memcopy — no
+//     channel swapping or bit-shifting per pixel.
+//
+//  2. The display controller's plane "rotation" property (DRM_MODE_ROTATE_180)
+//     offloads 180° rotation to hardware, making the rotated and non-rotated
+//     blit paths identical.
+//
+// The result on Pi 2 is ~1.66 ms per frame — a 32× improvement over the fbdev
+// baseline — at the cost of a more involved setup sequence.
+//
+// # Setup complexity
+//
+// Where fbdev needs a single ioctl and an mmap, DRM requires enumerating
+// connectors and CRTCs, allocating a dumb buffer, registering a framebuffer
+// with ADDFB2, setting the CRTC, and configuring the plane rotation property.
+// All of this is handled inside Open; Blit itself is trivial.
+//
+// DRM also requires DRM master, meaning the process must run on the Linux
+// console with no display server active. Open returns an error if this
+// condition is not met, and the caller (display_linux.go) falls back to fbdev.
+//
+// # Hardware support
+//
+// Tested on Raspberry Pi 2 with the vc4-kms-v3d overlay enabled in
+// /boot/config.txt. Should work on any Linux DRM modesetting device.
+//
+// # References
+//
+//   - Linux DRM UAPI: https://www.kernel.org/doc/html/latest/gpu/drm-uapi.html
+//   - Kernel headers: include/uapi/drm/drm.h, include/uapi/drm/drm_mode.h
+//   - Fourcc codes: include/uapi/drm/drm_fourcc.h
+package drm
 
 import (
 	"bytes"
@@ -18,13 +57,13 @@ import (
 // drmIoWR builds a DRM ioctl request number for a read+write ioctl.
 // Encoding: bits 31-30 = direction (3=R+W), bits 29-16 = struct size,
 // bits 15-8 = type ('d'=0x64 for DRM), bits 7-0 = command number.
-func drmIoWR(nr, size uintptr) uintptr {
-	return (3 << 30) | (size << 16) | (0x64 << 8) | nr
+func drmIoWR[T any](nr uintptr) uintptr {
+	return (3 << 30) | (unsafe.Sizeof(*new(T)) << 16) | (0x64 << 8) | nr
 }
 
 // drmIoW builds a DRM ioctl request number for a write-only ioctl (direction=1).
-func drmIoW(nr, size uintptr) uintptr {
-	return (1 << 30) | (size << 16) | (0x64 << 8) | nr
+func drmIoW[T any](nr uintptr) uintptr {
+	return (1 << 30) | (unsafe.Sizeof(*new(T)) << 16) | (0x64 << 8) | nr
 }
 
 // The following structs mirror the Linux kernel UAPI headers in <drm/drm_mode.h>.
@@ -123,7 +162,7 @@ type drmModeFBCmd2 struct {
 	Handles     [4]uint32
 	Pitches     [4]uint32
 	Offsets     [4]uint32
-	_           [4]byte    // padding: offsets ends at byte 68, modifier needs 8-byte alignment
+	_           [4]byte // padding: offsets ends at byte 68, modifier needs 8-byte alignment
 	Modifier    [4]uint64
 }
 
@@ -194,12 +233,12 @@ type drmModeObjGetProperties struct {
 // drmModeGetProperty mirrors struct drm_mode_get_property.
 // Name is a fixed 32-byte field (DRM_PROP_NAME_LEN).
 type drmModeGetProperty struct {
-	ValuesPtr     uint64
-	EnumBlobPtr   uint64
-	PropID        uint32
-	Flags         uint32
-	Name          [32]byte
-	CountValues   uint32
+	ValuesPtr      uint64
+	EnumBlobPtr    uint64
+	PropID         uint32
+	Flags          uint32
+	Name           [32]byte
+	CountValues    uint32
 	CountEnumBlobs uint32
 }
 
@@ -219,20 +258,20 @@ const (
 
 // ioctl request numbers, computed from struct sizes at init time.
 var (
-	ioctlSetClientCap     = drmIoW(0x0D, unsafe.Sizeof(drmSetClientCap{}))
-	ioctlModeGetResources = drmIoWR(0xA0, unsafe.Sizeof(drmModeRes{}))
-	ioctlModeGetConnector = drmIoWR(0xA7, unsafe.Sizeof(drmModeGetConnector{}))
-	ioctlModeGetEncoder   = drmIoWR(0xA6, unsafe.Sizeof(drmModeGetEncoder{}))
-	ioctlModeCreateDumb   = drmIoWR(0xB2, unsafe.Sizeof(drmModeCreateDumb{}))
-	ioctlModeMapDumb      = drmIoWR(0xB3, unsafe.Sizeof(drmModeMapDumb{}))
-	ioctlModeAddFB2       = drmIoWR(0xB8, unsafe.Sizeof(drmModeFBCmd2{}))
-	ioctlModeSetCRTC      = drmIoWR(0xA2, unsafe.Sizeof(drmModeCrtc{}))
-	ioctlModeDestroyDumb  = drmIoWR(0xB4, unsafe.Sizeof(drmModeDestroyDumb{}))
-	ioctlModeGetPlaneRes      = drmIoWR(0xB5, unsafe.Sizeof(drmModeGetPlaneRes{}))
-	ioctlModeGetPlane         = drmIoWR(0xB6, unsafe.Sizeof(drmModeGetPlane{}))
-	ioctlModeObjGetProperties = drmIoWR(0xB9, unsafe.Sizeof(drmModeObjGetProperties{}))
-	ioctlModeObjSetProperty   = drmIoWR(0xBA, unsafe.Sizeof(drmModeObjSetProperty{}))
-	ioctlModeGetProperty      = drmIoWR(0xAA, unsafe.Sizeof(drmModeGetProperty{}))
+	ioctlSetClientCap         = drmIoW[drmSetClientCap](0x0D)
+	ioctlModeGetResources     = drmIoWR[drmModeRes](0xA0)
+	ioctlModeGetConnector     = drmIoWR[drmModeGetConnector](0xA7)
+	ioctlModeGetEncoder       = drmIoWR[drmModeGetEncoder](0xA6)
+	ioctlModeCreateDumb       = drmIoWR[drmModeCreateDumb](0xB2)
+	ioctlModeMapDumb          = drmIoWR[drmModeMapDumb](0xB3)
+	ioctlModeAddFB2           = drmIoWR[drmModeFBCmd2](0xB8)
+	ioctlModeSetCRTC          = drmIoWR[drmModeCrtc](0xA2)
+	ioctlModeDestroyDumb      = drmIoWR[drmModeDestroyDumb](0xB4)
+	ioctlModeGetPlaneRes      = drmIoWR[drmModeGetPlaneRes](0xB5)
+	ioctlModeGetPlane         = drmIoWR[drmModeGetPlane](0xB6)
+	ioctlModeObjGetProperties = drmIoWR[drmModeObjGetProperties](0xB9)
+	ioctlModeObjSetProperty   = drmIoWR[drmModeObjSetProperty](0xBA)
+	ioctlModeGetProperty      = drmIoWR[drmModeGetProperty](0xAA)
 )
 
 func drmIoctl[T any](fd uintptr, req uintptr, arg *T) error {
@@ -243,7 +282,8 @@ func drmIoctl[T any](fd uintptr, req uintptr, arg *T) error {
 	return nil
 }
 
-type drmDevice struct {
+// Device represents an open DRM display device.
+type Device struct {
 	file   *os.File
 	fd     uintptr
 	width  int
@@ -253,12 +293,18 @@ type drmDevice struct {
 	data   []byte
 }
 
+// Width returns the display width in pixels.
+func (d *Device) Width() int { return d.width }
+
+// Height returns the display height in pixels.
+func (d *Device) Height() int { return d.height }
+
 // fourccToString converts a DRM fourcc format code to its 4-character ASCII name.
 func fourccToString(f uint32) string {
 	return string([]byte{byte(f), byte(f >> 8), byte(f >> 16), byte(f >> 24)})
 }
 
-// logPlaneFormats logs the fourcc pixel formats supported by each DRM plane.
+// logPlaneFormats logs the fourcc pixel formats supported by each DRM plane on fd.
 // It first sets DRM_CLIENT_CAP_UNIVERSAL_PLANES so that primary and cursor
 // planes are included alongside overlay planes.
 func logPlaneFormats(fd uintptr) {
@@ -306,6 +352,18 @@ func logPlaneFormats(fd uintptr) {
 		rotation := planeRotationProperty(fd, id)
 		slog.Info("DRM plane", "id", id, "possible_crtcs", fmt.Sprintf("0x%x", plane.PossibleCrtcs), "formats", names, "rotation_prop", rotation)
 	}
+}
+
+// LogPlaneFormats opens dev and logs the fourcc pixel formats supported by
+// each DRM plane. Useful for probing what hardware pixel formats are available.
+func LogPlaneFormats(dev string) {
+	f, err := os.OpenFile(dev, os.O_RDWR, 0)
+	if err != nil {
+		slog.Warn("LogPlaneFormats: open", "dev", dev, "err", err)
+		return
+	}
+	defer f.Close()
+	logPlaneFormats(f.Fd())
 }
 
 // findPropID returns the property ID of the named property on the given plane,
@@ -420,15 +478,25 @@ func setPlaneRotation(fd uintptr, crtcID uint32, crtcIDs []uint32, rotate bool) 
 	slog.Info("DRM plane rotation set", "planeID", planeID, "rotate180", rotate)
 }
 
-// openDRM opens the DRM device, finds the first connected connector, creates a
-// 32 bpp dumb buffer, registers it as a framebuffer and sets the CRTC.
-func openDRM(dev string, rotate bool) (*drmDevice, error) {
+// Open opens the DRM device at dev, finds the first connected connector,
+// creates a 32 bpp dumb buffer in ABGR8888 format, registers it as a
+// framebuffer, sets the CRTC, and configures hardware rotation if requested.
+func Open(dev string, rotate bool) (*Device, error) {
 	f, err := os.OpenFile(dev, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", dev, err)
 	}
 	fd := f.Fd()
-	logPlaneFormats(fd)
+
+	// Enable universal planes so that setPlaneRotation can enumerate the
+	// primary plane. Without this, only overlay planes are visible and
+	// rotation would be applied to the wrong plane.
+	cap := drmSetClientCap{Capability: drmClientCapUniversalPlanes, Value: 1}
+	err = drmIoctl(fd, ioctlSetClientCap, &cap)
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("DRM_CLIENT_CAP_UNIVERSAL_PLANES: %w", err)
+	}
 
 	// First call: discover how many connectors exist.
 	var res drmModeRes
@@ -574,7 +642,7 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	slog.Info("DRM display", "width", width, "height", height,
 		"stride", dumb.Pitch, "crtc", crtcID)
 
-	return &drmDevice{
+	return &Device{
 		file:   f,
 		fd:     fd,
 		width:  width,
@@ -585,19 +653,20 @@ func openDRM(dev string, rotate bool) (*drmDevice, error) {
 	}, nil
 }
 
-func (d *drmDevice) close() {
+// Close unmaps the dumb buffer and releases the DRM device file.
+func (d *Device) Close() {
 	syscall.Munmap(d.data)
 	destroy := drmModeDestroyDumb{Handle: d.handle}
 	drmIoctl(d.fd, ioctlModeDestroyDumb, &destroy)
 	d.file.Close()
 }
 
-// blit copies img to the DRM dumb buffer.
+// Blit copies img to the DRM dumb buffer.
 //
 // ABGR8888 matches image.RGBA.Pix exactly, so no pixel conversion is needed.
 // When strides match the whole frame is a single copy. Rotation is handled
-// by the hardware via the plane "rotation" property set at init time.
-func (d *drmDevice) blit(img *image.RGBA, _ bool) {
+// by the hardware via the plane "rotation" property set at Open time.
+func (d *Device) Blit(img *image.RGBA) {
 	if img.Stride == d.stride {
 		copy(d.data, img.Pix[:d.height*d.stride])
 		return

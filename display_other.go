@@ -30,6 +30,6 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	newHTTPPreview(buf, flip).register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()
-	runLoop(buf, active, weather, bigFace, smallFace, noopBlitter{}, false, notify)
+	runLoop(buf, active, weather, bigFace, smallFace, noopBlitter{}, notify)
 	return nil
 }
