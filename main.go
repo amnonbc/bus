@@ -63,8 +63,13 @@ func main() {
 	touchDev := flag.String("touch", "", "touch input device path (auto-detected if empty)")
 	debounce := flag.Duration("debounce", 100*time.Millisecond, "minimum interval between touch-triggered stop switches")
 	rotate := flag.Bool("rotate", true, "rotate display 180 degrees")
+	debug := flag.Bool("debug", false, "log DRM device information and other diagnostic output")
 	apiKey := flag.String("weather-key", "dd719ea57f1d4d44be6151200251209", "weatherapi.com API key")
 	flag.Parse()
+
+	if *debug {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	}
 
 	tt1 := newTimeTable(*stop)
 	tt1.start()
@@ -86,7 +91,7 @@ func main() {
 
 	go weatherLoop(*apiKey, tt1, &weather)
 
-	err := runDisplay(&active, &weather, *rotate, notify, flip)
+	err := runDisplay(&active, &weather, *rotate, *debug, notify, flip)
 	if err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
