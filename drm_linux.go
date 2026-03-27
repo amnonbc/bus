@@ -618,12 +618,14 @@ func rowU32(b []byte, off, n int) []uint32 {
 
 // blit copies img to the DRM dumb buffer.
 //
-// The framebuffer uses ABGR8888, which has the same memory layout as
-// image.RGBA.Pix (byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A), so pixels
-// are written directly with no channel conversion. Rotation is handled by
-// the hardware via the plane "rotation" property set at init time.
-// unsafe.Slice views eliminate per-pixel bounds checks.
+// ABGR8888 matches image.RGBA.Pix exactly, so no pixel conversion is needed.
+// When strides match the whole frame is a single copy. Rotation is handled
+// by the hardware via the plane "rotation" property set at init time.
 func (d *drmDevice) blit(img *image.RGBA, _ bool) {
+	if img.Stride == d.stride {
+		copy(d.data, img.Pix[:d.height*d.stride])
+		return
+	}
 	for y := 0; y < d.height; y++ {
 		src := rowU32(img.Pix, y*img.Stride, d.width)
 		dst := rowU32(d.data, y*d.stride, d.width)
