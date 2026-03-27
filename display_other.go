@@ -26,10 +26,10 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	}
 	defer smallFace.Close()
 
-	buf := newFrameBuffer(displayWidth, displayHeight)
+	buf := newFrameBuffer(displayWidth, displayHeight, bigFace, smallFace, noopBlitter{})
 	newHTTPPreview(buf, flip).register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()
-	runLoop(buf, active, weather, bigFace, smallFace, noopBlitter{}, notify)
+	buf.runLoop(active, weather, notify)
 	return nil
 }

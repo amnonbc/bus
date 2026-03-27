@@ -26,20 +26,26 @@ func (p *pool[T]) get() *T  { return p.p.Get().(*T) }
 func (p *pool[T]) put(v *T) { p.p.Put(v) }
 
 type frameBuffer struct {
-	mu    sync.RWMutex
-	bufs  [2]image.RGBA
-	front int          // index of the front (display) buffer; protected by mu
-	back  int          // index of the back (render) buffer; protected by mu
-	pool  pool[image.RGBA] // recycles image snapshots for copyFront
+	mu       sync.RWMutex
+	bufs     [2]image.RGBA
+	front    int            // index of the front (display) buffer; protected by mu
+	back     int            // index of the back (render) buffer; protected by mu
+	pool     pool[image.RGBA] // recycles image snapshots for copyFront
+	bigFace  xfont.Face
+	smallFace xfont.Face
+	hw       blitter
 }
 
-func newFrameBuffer(width, height int) *frameBuffer {
+func newFrameBuffer(width, height int, bigFace, smallFace xfont.Face, hw blitter) *frameBuffer {
 	rect := image.Rect(0, 0, width, height)
 	size := width * height * 4
 	fb := &frameBuffer{
-		front: 0,
-		back:  1,
-		pool:  newPool(func() *image.RGBA { return &image.RGBA{Pix: make([]byte, size)} }),
+		front:     0,
+		back:      1,
+		pool:      newPool(func() *image.RGBA { return &image.RGBA{Pix: make([]byte, size)} }),
+		bigFace:   bigFace,
+		smallFace: smallFace,
+		hw:        hw,
 	}
 	fb.bufs[0] = *image.NewRGBA(rect)
 	fb.bufs[1] = *image.NewRGBA(rect)
@@ -97,16 +103,16 @@ func (noopBlitter) Blit(*image.RGBA) {}
 // runLoop is the shared render loop used on all platforms. It renders a frame
 // each tick (or immediately on notify), publishes it via double buffering for
 // the HTTP preview, and passes it to hw for hardware display if provided.
-func runLoop(buf *frameBuffer, active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], bigFace, smallFace xfont.Face, hw blitter, notify <-chan struct{}) {
+func (fb *frameBuffer) runLoop(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], notify <-chan struct{}) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	r := newRenderer()
 	wasAnimating := false
 	for {
-		back := buf.backBuf()
-		animating := r.renderFrame(back, bigFace, smallFace, active.Load(), *weather.Load())
-		hw.Blit(back)
-		buf.publishFrame()
+		back := fb.backBuf()
+		animating := r.renderFrame(back, fb.bigFace, fb.smallFace, active.Load(), *weather.Load())
+		fb.hw.Blit(back)
+		fb.publishFrame()
 		if animating != wasAnimating {
 			if animating {
 				tick.Reset(33 * time.Millisecond) // ~30 fps during animation
