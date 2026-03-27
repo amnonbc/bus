@@ -27,18 +27,11 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 		hw = f
 	}
 
-	bigFace, err := newFace(100)
+	buf, err := newFrameBuffer(hw.Width(), hw.Height(), hw)
 	if err != nil {
 		return err
 	}
-	defer bigFace.Close()
-	smallFace, err := newFace(32)
-	if err != nil {
-		return err
-	}
-	defer smallFace.Close()
-
-	buf := newFrameBuffer(hw.Width(), hw.Height(), bigFace, smallFace, hw)
+	defer buf.close()
 	newHTTPPreview(buf, flip).register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()

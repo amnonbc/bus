@@ -79,8 +79,22 @@ type renderer struct {
 	smallFace   xfont.Face // small face for header, footer, and clock
 }
 
-func newRenderer(bigFace, smallFace xfont.Face) *renderer {
-	return &renderer{bigFace: bigFace, smallFace: smallFace}
+func newRenderer() (*renderer, error) {
+	bigFace, err := newFace(100)
+	if err != nil {
+		return nil, err
+	}
+	smallFace, err := newFace(32)
+	if err != nil {
+		bigFace.Close()
+		return nil, err
+	}
+	return &renderer{bigFace: bigFace, smallFace: smallFace}, nil
+}
+
+func (r *renderer) close() {
+	r.bigFace.Close()
+	r.smallFace.Close()
 }
 
 // isAnimating reports whether a scroll animation is currently in progress.
@@ -142,7 +156,7 @@ func (r *renderer) scrollLayout(firstIdx, yOffset int) (startIdx, startY, maxBus
 }
 
 // drawBuses renders the bus arrival rows onto img.
-func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, maxBuses, w int) {
+func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, maxBuses int) {
 	y := startY
 	count := 0
 	for _, b := range buses[startIdx:] {
@@ -158,7 +172,7 @@ func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, max
 		if d < 0 {
 			etaStr = "Due"
 		}
-		rightX := w - border - measureString(r.bigFace, etaStr)
+		rightX := img.Bounds().Max.X - border - measureString(r.bigFace, etaStr)
 		drawString(img, r.bigFace, rightX, y, etaStr, image.White)
 		y += slotHeight
 		count++
@@ -205,7 +219,7 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 
 	buses, yOffset := r.advanceScroll(tt.getBuses(), time.Now())
 	startIdx, startY, maxBuses := r.scrollLayout(firstIdxOf(buses), yOffset)
-	r.drawBuses(img, buses, startIdx, startY, maxBuses, w)
+	r.drawBuses(img, buses, startIdx, startY, maxBuses)
 
 	// Blank header and footer bands so scrolling bus rows cannot overwrite them.
 	const headerH, footerH = 40, 40

@@ -6,8 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	xfont "golang.org/x/image/font"
 )
 
 // frameBuffer uses double buffering: the render loop writes into the back
@@ -26,30 +24,36 @@ func (p *pool[T]) get() *T  { return p.p.Get().(*T) }
 func (p *pool[T]) put(v *T) { p.p.Put(v) }
 
 type frameBuffer struct {
-	mu       sync.RWMutex
-	bufs     [2]image.RGBA
-	front    int            // index of the front (display) buffer; protected by mu
-	back     int            // index of the back (render) buffer; protected by mu
-	pool     pool[image.RGBA] // recycles image snapshots for copyFront
-	bigFace  xfont.Face
-	smallFace xfont.Face
-	hw       blitter
+	mu    sync.RWMutex
+	bufs  [2]image.RGBA
+	front int              // index of the front (display) buffer; protected by mu
+	back  int              // index of the back (render) buffer; protected by mu
+	pool  pool[image.RGBA] // recycles image snapshots for copyFront
+	r     *renderer
+	hw    blitter
 }
 
-func newFrameBuffer(width, height int, bigFace, smallFace xfont.Face, hw blitter) *frameBuffer {
+func newFrameBuffer(width, height int, hw blitter) (*frameBuffer, error) {
+	r, err := newRenderer()
+	if err != nil {
+		return nil, err
+	}
 	rect := image.Rect(0, 0, width, height)
 	size := width * height * 4
 	fb := &frameBuffer{
-		front:     0,
-		back:      1,
-		pool:      newPool(func() *image.RGBA { return &image.RGBA{Pix: make([]byte, size)} }),
-		bigFace:   bigFace,
-		smallFace: smallFace,
-		hw:        hw,
+		front: 0,
+		back:  1,
+		pool:  newPool(func() *image.RGBA { return &image.RGBA{Pix: make([]byte, size)} }),
+		r:     r,
+		hw:    hw,
 	}
 	fb.bufs[0] = *image.NewRGBA(rect)
 	fb.bufs[1] = *image.NewRGBA(rect)
-	return fb
+	return fb, nil
+}
+
+func (fb *frameBuffer) close() {
+	fb.r.close()
 }
 
 // backBuf returns the buffer to draw into for the next frame.
@@ -106,20 +110,19 @@ func (noopBlitter) Blit(*image.RGBA) {}
 func (fb *frameBuffer) runLoop(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], notify <-chan struct{}) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	r := newRenderer(fb.bigFace, fb.smallFace)
 	wasAnimating := false
 	for {
 		back := fb.backBuf()
-		r.renderFrame(back, active.Load(), *weather.Load())
+		fb.r.renderFrame(back, active.Load(), *weather.Load())
 		fb.hw.Blit(back)
 		fb.publishFrame()
-		if r.isAnimating() != wasAnimating {
-			if r.isAnimating() {
+		if fb.r.isAnimating() != wasAnimating {
+			if fb.r.isAnimating() {
 				tick.Reset(33 * time.Millisecond) // ~30 fps during animation
 			} else {
 				tick.Reset(time.Second)
 			}
-			wasAnimating = r.isAnimating()
+			wasAnimating = fb.r.isAnimating()
 		}
 		select {
 		case <-tick.C:
