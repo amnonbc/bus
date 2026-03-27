@@ -10,8 +10,14 @@ import (
 	"sync/atomic"
 )
 
-func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool, notify <-chan struct{}, flip func()) error {
+func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool, debug bool, notify <-chan struct{}, flip func()) error {
 	var hw blitter
+
+	if debug {
+		for _, card := range []string{"/dev/dri/card0", "/dev/dri/card1", "/dev/dri/card2"} {
+			drm.LogPlaneFormats(card)
+		}
+	}
 
 	d, err := drm.Open("/dev/dri/card0", rotate)
 	if err == nil {
