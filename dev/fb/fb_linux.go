@@ -39,6 +39,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"image"
+	"image/color"
 	"log/slog"
 	"os"
 	"strconv"
@@ -122,11 +123,60 @@ type Device struct {
 	data   []byte
 }
 
+// NewTestImage returns an 8-bit RGBA image filled with a non-trivial pattern
+// (R=x, G=y, B=x+y, A=255). Used by tests in this package and in bus/dev/drm.
+func NewTestImage(width, height int) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetRGBA(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: uint8(x + y), A: 0xff})
+		}
+	}
+	return img
+}
+
 // Width returns the display width in pixels.
 func (fb *Device) Width() int { return fb.width }
 
 // Height returns the display height in pixels.
 func (fb *Device) Height() int { return fb.height }
+
+// Data returns the raw framebuffer bytes. Used by tests to inspect output.
+func (fb *Device) Data() []byte { return fb.data }
+
+// NewTestDevice constructs a Device backed by an in-memory buffer for use in
+// tests. bpp must be 16 or 32; bit-field offsets are set to the standard
+// RGB565 or XRGB8888 layout.
+func NewTestDevice(width, height, bpp int, rotate bool) *Device {
+	bytesPerPixel := bpp / 8
+	stride := width * bytesPerPixel
+	vinfo := fbVarScreenInfo{
+		XRes:         uint32(width),
+		YRes:         uint32(height),
+		BitsPerPixel: uint32(bpp),
+	}
+	// RGB565: R at bit 11 (5 bits), G at bit 5 (6 bits), B at bit 0 (5 bits).
+	// RGB8888: R at bit 0, G at bit 8, B at bit 16.
+	if bpp == 16 {
+		vinfo.Red = fbBitField{Offset: 11}
+		vinfo.Green = fbBitField{Offset: 5}
+		vinfo.Blue = fbBitField{Offset: 0}
+	} else {
+		vinfo.Red = fbBitField{Offset: 0}
+		vinfo.Green = fbBitField{Offset: 8}
+		vinfo.Blue = fbBitField{Offset: 16}
+		vinfo.Transp = fbBitField{Offset: 24}
+	}
+	return &Device{
+		width:  width,
+		height: height,
+		stride: stride,
+		bpp:    bpp,
+		rotate: rotate,
+		vinfo:  vinfo,
+		data:   make([]byte, stride*height),
+	}
+}
 
 // Open opens the framebuffer device at dev, queries its geometry and pixel
 // format, and maps the framebuffer into memory. Returns an error if the
