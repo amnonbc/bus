@@ -71,21 +71,28 @@ func firstIdxOf(buses []Bus) int {
 
 // renderer holds animation state between frames.
 type renderer struct {
-	prevTopETA  time.Time // ETA of the bus drawn at top last frame; zero if none
-	scrollStart time.Time // when the current scroll animation started; zero if idle
-	scrollBuses []Bus     // bus list snapshot taken when scroll started; nil when idle
-	stopID      int       // stop currently being rendered; animation resets on change
+	prevTopETA  time.Time  // ETA of the bus drawn at top last frame; zero if none
+	scrollStart time.Time  // when the current scroll animation started; zero if idle
+	scrollBuses []Bus      // bus list snapshot taken when scroll started; nil when idle
+	stopID      int        // stop currently being rendered; animation resets on change
+	bigFace     xfont.Face // large face for bus numbers and ETAs
+	smallFace   xfont.Face // small face for header, footer, and clock
 }
 
-func newRenderer() *renderer {
-	return &renderer{}
+func newRenderer(bigFace, smallFace xfont.Face) *renderer {
+	return &renderer{bigFace: bigFace, smallFace: smallFace}
 }
 
-// advanceScroll updates animation state and returns the bus slice to draw from,
-// the current vertical pixel offset, and whether animation is in progress.
+// isAnimating reports whether a scroll animation is currently in progress.
+func (r *renderer) isAnimating() bool {
+	return !r.scrollStart.IsZero()
+}
+
+// advanceScroll updates animation state and returns the bus slice to draw from
+// and the current vertical pixel offset.
 // liveBuses is always used for prevTopETA so the next departure is detected
 // correctly; the returned slice is the snapshot during animation.
-func (r *renderer) advanceScroll(liveBuses []Bus, now time.Time) (buses []Bus, yOffset int, animating bool) {
+func (r *renderer) advanceScroll(liveBuses []Bus, now time.Time) (buses []Bus, yOffset int) {
 	liveFirstIdx := firstIdxOf(liveBuses)
 
 	// Detect departure of the top bus → start scroll and snapshot the list.
@@ -95,11 +102,9 @@ func (r *renderer) advanceScroll(liveBuses []Bus, now time.Time) (buses []Bus, y
 	}
 
 	// Advance or end the animation.
-	animating = !r.scrollStart.IsZero()
-	if animating {
+	if r.isAnimating() {
 		elapsed := time.Since(r.scrollStart)
 		if elapsed >= scrollDuration {
-			animating = false
 			r.scrollStart = time.Time{}
 			r.scrollBuses = nil
 		} else {
@@ -118,15 +123,15 @@ func (r *renderer) advanceScroll(liveBuses []Bus, now time.Time) (buses []Bus, y
 		r.prevTopETA = time.Time{}
 	}
 
-	if animating {
-		return r.scrollBuses, yOffset, true
+	if r.isAnimating() {
+		return r.scrollBuses, yOffset
 	}
-	return liveBuses, 0, false
+	return liveBuses, 0
 }
 
 // scrollLayout returns the drawing parameters for the bus list.
-func scrollLayout(firstIdx, yOffset int, animating bool) (startIdx, startY, maxBuses int) {
-	if !animating {
+func (r *renderer) scrollLayout(firstIdx, yOffset int) (startIdx, startY, maxBuses int) {
+	if !r.isAnimating() {
 		return firstIdx, 150, 3
 	}
 	startIdx = firstIdx
@@ -137,7 +142,7 @@ func scrollLayout(firstIdx, yOffset int, animating bool) (startIdx, startY, maxB
 }
 
 // drawBuses renders the bus arrival rows onto img.
-func drawBuses(img *image.RGBA, face xfont.Face, buses []Bus, startIdx, startY, maxBuses, w, border int, animating bool) {
+func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, maxBuses, w int) {
 	y := startY
 	count := 0
 	for _, b := range buses[startIdx:] {
@@ -145,47 +150,46 @@ func drawBuses(img *image.RGBA, face xfont.Face, buses []Bus, startIdx, startY, 
 			break
 		}
 		d := fromTime(b.ETA)
-		if d < 0 && !animating {
+		if d < 0 && !r.isAnimating() {
 			continue
 		}
-		drawString(img, face, border, y, b.Number, image.White)
+		drawString(img, r.bigFace, border, y, b.Number, image.White)
 		etaStr := d.String()
 		if d < 0 {
 			etaStr = "Due"
 		}
-		rightX := w - border - measureString(face, etaStr)
-		drawString(img, face, rightX, y, etaStr, image.White)
+		rightX := w - border - measureString(r.bigFace, etaStr)
+		drawString(img, r.bigFace, rightX, y, etaStr, image.White)
 		y += slotHeight
 		count++
 	}
 }
 
 // drawFooter renders the weather string and clock onto the bottom of img.
-func drawFooter(img *image.RGBA, face xfont.Face, weatherStr string, border int) {
-	y := img.Bounds().Max.Y - face.Metrics().Descent.Ceil()
+func (r *renderer) drawFooter(img *image.RGBA, weatherStr string) {
+	y := img.Bounds().Max.Y - r.smallFace.Metrics().Descent.Ceil()
 	w := img.Bounds().Max.X
-	drawString(img, face, border, y, weatherStr, image.White)
+	drawString(img, r.smallFace, border, y, weatherStr, image.White)
 	timeStr := time.Now().Format("3:04:05")
-	drawString(img, face, w-border-measureString(face, timeStr), y, timeStr, image.White)
+	drawString(img, r.smallFace, w-border-measureString(r.smallFace, timeStr), y, timeStr, image.White)
 }
 
 var headerColour = image.NewUniform(color.Gray{Y: 180})
 
 // drawHeader renders the stop name and direction onto the top of img.
-func drawHeader(img *image.RGBA, tt *timeTable, f xfont.Face, border int) {
+func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 	info := tt.getStopInfo()
 	header := info.Name
 	if info.Towards != "" {
 		header += " - To: " + info.Towards
 	}
 	if header != "" {
-		drawString(img, f, border, f.Metrics().Ascent.Ceil(), header, headerColour)
+		drawString(img, r.smallFace, border, r.smallFace.Metrics().Ascent.Ceil(), header, headerColour)
 	}
 }
 
-// renderFrame draws a complete frame and returns true while a scroll animation
-// is in progress. The caller should render at a high frame rate while true.
-func (r *renderer) renderFrame(img *image.RGBA, bigFace, smallFace xfont.Face, tt *timeTable, weatherStr string) bool {
+// renderFrame draws a complete frame onto img.
+func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string) {
 	w := img.Bounds().Max.X
 	h := img.Bounds().Max.Y
 
@@ -199,9 +203,9 @@ func (r *renderer) renderFrame(img *image.RGBA, bigFace, smallFace xfont.Face, t
 
 	draw.Draw(img, img.Bounds(), image.NewUniform(color.Black), image.Point{}, draw.Src)
 
-	buses, yOffset, animating := r.advanceScroll(tt.getBuses(), time.Now())
-	startIdx, startY, maxBuses := scrollLayout(firstIdxOf(buses), yOffset, animating)
-	drawBuses(img, bigFace, buses, startIdx, startY, maxBuses, w, border, animating)
+	buses, yOffset := r.advanceScroll(tt.getBuses(), time.Now())
+	startIdx, startY, maxBuses := r.scrollLayout(firstIdxOf(buses), yOffset)
+	r.drawBuses(img, buses, startIdx, startY, maxBuses, w)
 
 	// Blank header and footer bands so scrolling bus rows cannot overwrite them.
 	const headerH, footerH = 40, 40
@@ -210,8 +214,7 @@ func (r *renderer) renderFrame(img *image.RGBA, bigFace, smallFace xfont.Face, t
 	draw.Draw(img, image.Rect(0, h-footerH, w, h), black, image.Point{}, draw.Src)
 
 	// Header and footer drawn last so they always appear on top of bus rows.
-	drawHeader(img, tt, smallFace, border)
-	drawFooter(img, smallFace, weatherStr, border)
+	r.drawHeader(img, tt)
+	r.drawFooter(img, weatherStr)
 
-	return animating
 }

@@ -106,20 +106,20 @@ func (noopBlitter) Blit(*image.RGBA) {}
 func (fb *frameBuffer) runLoop(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], notify <-chan struct{}) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	r := newRenderer()
+	r := newRenderer(fb.bigFace, fb.smallFace)
 	wasAnimating := false
 	for {
 		back := fb.backBuf()
-		animating := r.renderFrame(back, fb.bigFace, fb.smallFace, active.Load(), *weather.Load())
+		r.renderFrame(back, active.Load(), *weather.Load())
 		fb.hw.Blit(back)
 		fb.publishFrame()
-		if animating != wasAnimating {
-			if animating {
+		if r.isAnimating() != wasAnimating {
+			if r.isAnimating() {
 				tick.Reset(33 * time.Millisecond) // ~30 fps during animation
 			} else {
 				tick.Reset(time.Second)
 			}
-			wasAnimating = animating
+			wasAnimating = r.isAnimating()
 		}
 		select {
 		case <-tick.C:
