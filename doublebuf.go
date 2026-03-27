@@ -34,7 +34,7 @@ type frameBuffer struct {
 }
 
 func newFrameBuffer(width, height int, hw blitter) (*frameBuffer, error) {
-	r, err := newRenderer()
+	r, err := newRenderer(width)
 	if err != nil {
 		return nil, err
 	}

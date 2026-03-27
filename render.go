@@ -18,7 +18,6 @@ import (
 const (
 	slotHeight     = 130
 	scrollDuration = 5 * time.Second
-	border         = 80
 )
 
 // smoothstep maps t ∈ [0,1] to [0,1] with zero first-derivative at both
@@ -77,9 +76,10 @@ type renderer struct {
 	stopID      int        // stop currently being rendered; animation resets on change
 	bigFace     xfont.Face // large face for bus numbers and ETAs
 	smallFace   xfont.Face // small face for header, footer, and clock
+	border      int        // left/right margin in pixels; proportional to screen width
 }
 
-func newRenderer() (*renderer, error) {
+func newRenderer(width int) (*renderer, error) {
 	bigFace, err := newFace(100)
 	if err != nil {
 		return nil, err
@@ -89,7 +89,11 @@ func newRenderer() (*renderer, error) {
 		bigFace.Close()
 		return nil, err
 	}
-	return &renderer{bigFace: bigFace, smallFace: smallFace}, nil
+	border := 80
+	if width != 800 {
+		border = 10
+	}
+	return &renderer{bigFace: bigFace, smallFace: smallFace, border: border}, nil
 }
 
 func (r *renderer) close() {
@@ -167,12 +171,12 @@ func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, max
 		if d < 0 && !r.isAnimating() {
 			continue
 		}
-		drawString(img, r.bigFace, border, y, b.Number, image.White)
+		drawString(img, r.bigFace, r.border, y, b.Number, image.White)
 		etaStr := d.String()
 		if d < 0 {
 			etaStr = "Due"
 		}
-		rightX := img.Bounds().Max.X - border - measureString(r.bigFace, etaStr)
+		rightX := img.Bounds().Max.X - r.border - measureString(r.bigFace, etaStr)
 		drawString(img, r.bigFace, rightX, y, etaStr, image.White)
 		y += slotHeight
 		count++
@@ -183,9 +187,9 @@ func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, max
 func (r *renderer) drawFooter(img *image.RGBA, weatherStr string) {
 	y := img.Bounds().Max.Y - r.smallFace.Metrics().Descent.Ceil()
 	w := img.Bounds().Max.X
-	drawString(img, r.smallFace, border, y, weatherStr, image.White)
+	drawString(img, r.smallFace, r.border, y, weatherStr, image.White)
 	timeStr := time.Now().Format("3:04:05")
-	drawString(img, r.smallFace, w-border-measureString(r.smallFace, timeStr), y, timeStr, image.White)
+	drawString(img, r.smallFace, w-r.border-measureString(r.smallFace, timeStr), y, timeStr, image.White)
 }
 
 var headerColour = image.NewUniform(color.Gray{Y: 180})
@@ -198,7 +202,7 @@ func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 		header += " - To: " + info.Towards
 	}
 	if header != "" {
-		drawString(img, r.smallFace, border, r.smallFace.Metrics().Ascent.Ceil(), header, headerColour)
+		drawString(img, r.smallFace, r.border, r.smallFace.Metrics().Ascent.Ceil(), header, headerColour)
 	}
 }
 

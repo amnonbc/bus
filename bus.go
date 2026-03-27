@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-var httpClient = &http.Client{Timeout: 10 * time.Second}
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 const tflBase = "https://countdown.api.tfl.gov.uk/interfaces/ura/instant_V1"
 
