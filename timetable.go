@@ -5,18 +5,24 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type timeTable struct {
 	stopID int
+	ready  chan struct{}
+	signal sync.Once
 	info   atomic.Pointer[StopInfo]
 	busses atomic.Pointer[[]Bus]
 }
 
 func newTimeTable(stopID int) *timeTable {
-	return &timeTable{stopID: stopID}
+	return &timeTable{
+		stopID: stopID,
+		ready:  make(chan struct{}),
+	}
 }
 
 func (t *timeTable) start() {
@@ -59,6 +65,7 @@ func (t *timeTable) download() {
 	}
 	t.busses.Store(&buses)
 	t.info.Store(&info)
+	t.signal.Do(func() { close(t.ready) })
 }
 
 func (t *timeTable) downloadLoop() {

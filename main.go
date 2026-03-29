@@ -41,13 +41,13 @@ func fetchWeather(apiKey, location string, weather *atomic.Pointer[string]) {
 }
 
 func weatherLoop(apiKey string, tt *timeTable, weather *atomic.Pointer[string]) {
+	slog.Info("weather: waiting for coordinates to be set")
+	<-tt.ready
+
 	info := tt.getStopInfo()
-	for info.Lat == 0 && info.Lon == 0 {
-		slog.Warn("stop location not yet available, retrying weather in 30s")
-		time.Sleep(30 * time.Second)
-		info = tt.getStopInfo()
-	}
+
 	geoCoordinates := fmt.Sprintf("%f,%f", info.Lat, info.Lon)
+	slog.Info("weather", "location", geoCoordinates)
 
 	fetchWeather(apiKey, geoCoordinates, weather)
 	tick := time.NewTicker(time.Hour)
