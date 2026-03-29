@@ -26,7 +26,6 @@ func newTimeTable(stopID int) *timeTable {
 }
 
 func (t *timeTable) start() {
-	t.download()
 	go t.downloadLoop()
 }
 
@@ -57,20 +56,25 @@ func fromTime(t time.Time) delay {
 	return delay(time.Until(t).Round(time.Second))
 }
 
-func (t *timeTable) download() {
+func (t *timeTable) download() error {
 	buses, info, err := GetBusData(tflBase, t.stopID)
 	if err != nil {
 		slog.Error("download timetable", "err", err)
-		return
+		return err
 	}
 	t.busses.Store(&buses)
 	t.info.Store(&info)
 	t.signal.Do(func() { close(t.ready) })
+	return nil
 }
 
 func (t *timeTable) downloadLoop() {
-	tick := time.NewTicker(30 * time.Second)
-	for range tick.C {
-		t.download()
+	for {
+		err := t.download()
+		interval := 30 * time.Second
+		if err != nil {
+			interval = 5 * time.Second
+		}
+		time.Sleep(interval)
 	}
 }
