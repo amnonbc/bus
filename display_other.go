@@ -14,8 +14,8 @@ const (
 	displayHeight = 480
 )
 
-func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], _ bool, _ bool, notify <-chan struct{}, flip func()) error {
-	buf, err := newFrameBuffer(displayWidth, displayHeight, noopBlitter{})
+func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], _ bool, _ bool, _ bool, invert bool, notify <-chan struct{}, flip func()) error {
+	buf, err := newFrameBuffer(displayWidth, displayHeight, noopBlitter{}, invert)
 	if err != nil {
 		return err
 	}

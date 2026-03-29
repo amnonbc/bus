@@ -72,16 +72,19 @@ func firstIdxOf(buses []Bus) int {
 
 // renderer holds animation state between frames.
 type renderer struct {
-	prevTopETA  time.Time  // ETA of the bus drawn at top last frame; zero if none
-	scrollStart time.Time  // when the current scroll animation started; zero if idle
-	scrollBuses []Bus      // bus list snapshot taken when scroll started; nil when idle
-	stopID      int        // stop currently being rendered; animation resets on change
-	bigFace     xfont.Face // large face for bus numbers and ETAs
-	smallFace   xfont.Face // small face for header, footer, and clock
-	border      int        // left/right margin in pixels; proportional to screen width
+	prevTopETA  time.Time      // ETA of the bus drawn at top last frame; zero if none
+	scrollStart time.Time      // when the current scroll animation started; zero if idle
+	scrollBuses []Bus          // bus list snapshot taken when scroll started; nil when idle
+	stopID      int            // stop currently being rendered; animation resets on change
+	bigFace     xfont.Face     // large face for bus numbers and ETAs
+	smallFace   xfont.Face     // small face for header, footer, and clock
+	border      int            // left/right margin in pixels; proportional to screen width
+	fg          *image.Uniform // foreground (text) colour
+	bg          *image.Uniform // background colour
+	headerClr   *image.Uniform // header text colour (dimmer than fg)
 }
 
-func newRenderer(width int) (*renderer, error) {
+func newRenderer(width int, invert bool) (*renderer, error) {
 	bigFace, err := newFace(100)
 	if err != nil {
 		return nil, err
@@ -95,7 +98,22 @@ func newRenderer(width int) (*renderer, error) {
 	if width != 800 {
 		border = 10
 	}
-	return &renderer{bigFace: bigFace, smallFace: smallFace, border: border}, nil
+	fg := image.NewUniform(color.White)
+	bg := image.NewUniform(color.Black)
+	headerClr := image.NewUniform(color.Gray{Y: 180})
+	if invert {
+		fg = image.NewUniform(color.Black)
+		bg = image.NewUniform(color.White)
+		headerClr = image.NewUniform(color.Gray{Y: 75})
+	}
+	return &renderer{
+		bigFace:   bigFace,
+		smallFace: smallFace,
+		border:    border,
+		fg:        fg,
+		bg:        bg,
+		headerClr: headerClr,
+	}, nil
 }
 
 func (r *renderer) close() {
@@ -173,15 +191,15 @@ func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, max
 		if d < 0 && !r.isAnimating() {
 			continue
 		}
+		drawString(img, r.bigFace, r.border, y, b.Number, r.fg)
 		var etaStr string
 		if d < 0 {
 			etaStr = "Due"
 		} else {
 			etaStr = d.String()
 		}
-		drawString(img, r.bigFace, r.border, y, b.Number, image.White)
 		rightX := img.Bounds().Max.X - r.border - measureString(r.bigFace, etaStr)
-		drawString(img, r.bigFace, rightX, y, etaStr, image.White)
+		drawString(img, r.bigFace, rightX, y, etaStr, r.fg)
 		y += slotHeight
 		count++
 	}
@@ -191,15 +209,11 @@ func (r *renderer) drawBuses(img *image.RGBA, buses []Bus, startIdx, startY, max
 func (r *renderer) drawFooter(img *image.RGBA, weatherStr string) {
 	y := img.Bounds().Max.Y - r.smallFace.Metrics().Descent.Ceil()
 	w := img.Bounds().Max.X
-	drawString(img, r.smallFace, r.border, y, weatherStr, image.White)
+	drawString(img, r.smallFace, r.border, y, weatherStr, r.fg)
 	timeStr := time.Now().Format("3:04:05")
-	drawString(img, r.smallFace, w-r.border-measureString(r.smallFace, timeStr), y, timeStr, image.White)
+	drawString(img, r.smallFace, w-r.border-measureString(r.smallFace, timeStr), y, timeStr, r.fg)
 }
 
-var (
-	headerColour = image.NewUniform(color.Gray{Y: 180})
-	blackUniform = image.NewUniform(color.Black)
-)
 
 // drawHeader renders the stop name and direction onto the top of img.
 func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
@@ -209,7 +223,7 @@ func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 		header += " - To: " + info.Towards
 	}
 	if header != "" {
-		drawString(img, r.smallFace, r.border, r.smallFace.Metrics().Ascent.Ceil(), header, headerColour)
+		drawString(img, r.smallFace, r.border, r.smallFace.Metrics().Ascent.Ceil(), header, r.headerClr)
 	}
 }
 
@@ -226,7 +240,7 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 		r.scrollBuses = nil
 	}
 
-	draw.Draw(img, img.Bounds(), blackUniform, image.Point{}, draw.Src)
+	draw.Draw(img, img.Bounds(), r.bg, image.Point{}, draw.Src)
 
 	buses, yOffset := r.advanceScroll(tt.getBuses(), time.Now())
 	startIdx, startY, maxBuses := r.scrollLayout(firstIdxOf(buses), yOffset)
@@ -234,8 +248,8 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 
 	// Blank header and footer bands so scrolling bus rows cannot overwrite them.
 	const headerH, footerH = 40, 40
-	draw.Draw(img, image.Rect(0, 0, w, headerH), blackUniform, image.Point{}, draw.Src)
-	draw.Draw(img, image.Rect(0, h-footerH, w, h), blackUniform, image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, 0, w, headerH), r.bg, image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, h-footerH, w, h), r.bg, image.Point{}, draw.Src)
 
 	// Header and footer drawn last so they always appear on top of bus rows.
 	r.drawHeader(img, tt)

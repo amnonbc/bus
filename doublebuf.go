@@ -33,8 +33,8 @@ type frameBuffer struct {
 	hw    blitter
 }
 
-func newFrameBuffer(width, height int, hw blitter) (*frameBuffer, error) {
-	r, err := newRenderer(width)
+func newFrameBuffer(width, height int, hw blitter, invert bool) (*frameBuffer, error) {
+	r, err := newRenderer(width, invert)
 	if err != nil {
 		return nil, err
 	}
