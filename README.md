@@ -94,6 +94,9 @@ Copy the binary to the Pi with `scp bus pi@raspberrypi:bus/bus`.
   -touch str         touch input device path (auto-detected if empty)
   -debounce dur      minimum interval between touch-triggered stop switches (default 100ms)
   -rotate            rotate display 180 degrees (default true)
+  -white             white background: render black text on white instead of white on black
+  -fb                force framebuffer (/dev/fb0) rendering, skipping DRM even if available (useful for testing the fbdev path on a machine that supports both)
+  -debug             log DRM device information and other diagnostic output
   -weather-key str   weatherapi.com API key
 ```
 
