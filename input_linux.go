@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -47,6 +48,27 @@ func findTouchDevice() string {
 	return ""
 }
 
+// openWithRetry opens a device file, retrying on permission errors to handle
+// the race between the service starting and udev applying group permissions.
+func openWithRetry(dev string) (*os.File, error) {
+	const attempts = 10
+	var err error
+	for i := range attempts {
+		if i > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		var f *os.File
+		f, err = os.Open(dev)
+		if err == nil {
+			return f, nil
+		}
+		if !errors.Is(err, os.ErrPermission) {
+			return nil, err
+		}
+	}
+	return nil, err
+}
+
 // watchTouch reads touch events and toggles the active timetable between tt1
 // and tt2 on each finger-down (BTN_TOUCH value 1) event. It sends on notify
 // after each switch so the display can redraw immediately.
@@ -59,7 +81,7 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 		return
 	}
 
-	f, err := os.Open(dev)
+	f, err := openWithRetry(dev)
 	if err != nil {
 		slog.Error("open touch device", "dev", dev, "err", err)
 		return
