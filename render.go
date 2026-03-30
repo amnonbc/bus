@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"log/slog"
 	"time"
 
 	xfont "golang.org/x/image/font"
@@ -75,13 +76,32 @@ type renderer struct {
 	prevTopETA  time.Time      // ETA of the bus drawn at top last frame; zero if none
 	scrollStart time.Time      // when the current scroll animation started; zero if idle
 	scrollBuses []Bus          // bus list snapshot taken when scroll started; nil when idle
-	stopID      int            // stop currently being rendered; animation resets on change
+	stopID      int            // stop currently being rendered; animation resets on change; -1 = clock screen
 	bigFace     xfont.Face     // large face for bus numbers and ETAs
 	smallFace   xfont.Face     // small face for header, footer, and clock
+	clockFace   xfont.Face     // largest face that fits the screen width, used for clock screen
 	border      int            // left/right margin in pixels; proportional to screen width
 	fg          *image.Uniform // foreground (text) colour
 	bg          *image.Uniform // background colour
 	headerClr   *image.Uniform // header text colour (dimmer than fg)
+}
+
+// newClockFace returns the largest face whose rendered "00:00:00" fits within
+// the available width (screen width minus both borders).
+func newClockFace(width, border int) (xfont.Face, error) {
+	available := width - 2*border
+	for size := 200.0; size >= 20; size -= 2 {
+		face, err := newFace(size)
+		if err != nil {
+			return nil, err
+		}
+		if measureString(face, "00:00:00") <= available {
+			slog.Debug("clock face", "size", size, "available", available)
+			return face, nil
+		}
+		face.Close()
+	}
+	return newFace(20)
 }
 
 func newRenderer(width int, invert bool) (*renderer, error) {
@@ -98,6 +118,12 @@ func newRenderer(width int, invert bool) (*renderer, error) {
 	if width != 800 {
 		border = 10
 	}
+	clockFace, err := newClockFace(width, border)
+	if err != nil {
+		bigFace.Close()
+		smallFace.Close()
+		return nil, err
+	}
 	fg := image.NewUniform(color.White)
 	bg := image.NewUniform(color.Black)
 	headerClr := image.NewUniform(color.Gray{Y: 180})
@@ -109,6 +135,7 @@ func newRenderer(width int, invert bool) (*renderer, error) {
 	return &renderer{
 		bigFace:   bigFace,
 		smallFace: smallFace,
+		clockFace: clockFace,
 		border:    border,
 		fg:        fg,
 		bg:        bg,
@@ -119,6 +146,7 @@ func newRenderer(width int, invert bool) (*renderer, error) {
 func (r *renderer) close() {
 	r.bigFace.Close()
 	r.smallFace.Close()
+	r.clockFace.Close()
 }
 
 // isAnimating reports whether a scroll animation is currently in progress.
@@ -214,7 +242,6 @@ func (r *renderer) drawFooter(img *image.RGBA, weatherStr string) {
 	drawString(img, r.smallFace, w-r.border-measureString(r.smallFace, timeStr), y, timeStr, r.fg)
 }
 
-
 // drawHeader renders the stop name and direction onto the top of img.
 func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 	info := tt.getStopInfo()
@@ -227,8 +254,50 @@ func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 	}
 }
 
-// renderFrame draws a complete frame onto img.
+// renderClock draws a full-screen clock showing the time (in the largest font
+// that fits), the date, and the current weather at the bottom.
+func (r *renderer) renderClock(img *image.RGBA, weatherStr string) {
+	draw.Draw(img, img.Bounds(), r.bg, image.Point{}, draw.Src)
+
+	w := img.Bounds().Max.X
+	h := img.Bounds().Max.Y
+
+	now := time.Now()
+	timeStr := now.Format("3:04:05")
+	dateStr := now.Format("Monday 2 January 2006")
+
+	clockAsc := r.clockFace.Metrics().Ascent.Ceil()
+	clockDesc := r.clockFace.Metrics().Descent.Ceil()
+	smallAsc := r.smallFace.Metrics().Ascent.Ceil()
+	smallDesc := r.smallFace.Metrics().Descent.Ceil()
+
+	const gap = 16
+	totalH := clockAsc + clockDesc + gap + smallAsc + smallDesc
+	startY := (h - totalH) / 2
+
+	timeY := startY + clockAsc
+	drawString(img, r.clockFace, (w-measureString(r.clockFace, timeStr))/2, timeY, timeStr, r.fg)
+
+	dateY := timeY + clockDesc + gap + smallAsc
+	drawString(img, r.smallFace, (w-measureString(r.smallFace, dateStr))/2, dateY, dateStr, r.fg)
+
+	drawString(img, r.smallFace, r.border, h-smallDesc, weatherStr, r.fg)
+}
+
+// renderFrame draws a complete frame onto img. If tt is nil the clock screen
+// is shown instead of bus arrivals.
 func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string) {
+	if tt == nil {
+		if r.stopID != -1 {
+			r.stopID = -1
+			r.prevTopETA = time.Time{}
+			r.scrollStart = time.Time{}
+			r.scrollBuses = nil
+		}
+		r.renderClock(img, weatherStr)
+		return
+	}
+
 	w := img.Bounds().Max.X
 	h := img.Bounds().Max.Y
 

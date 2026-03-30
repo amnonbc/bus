@@ -7,21 +7,28 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
 
 const weatherURL = "https://api.weatherapi.com/v1/current.json"
 
-// switchStop toggles active between tt1 and tt2 and notifies the render loop.
-func switchStop(tt1, tt2 *timeTable, active *atomic.Pointer[timeTable], notify chan<- struct{}) {
-	next := tt2
-	if active.Load() == tt2 {
-		next = tt1
+// advance cycles the display to the next state: stop 0, stop 1, …, clock, stop 0, …
+// Passing nil to active signals the clock screen.
+func advance(tts []*timeTable, idx *atomic.Int32, active *atomic.Pointer[timeTable], notify chan<- struct{}) {
+	n := int32(len(tts))
+	next := (idx.Load() + 1) % (n + 1) // n+1 states: one per stop plus clock
+	idx.Store(next)
+	if next < n {
+		tt := tts[next]
+		active.Store(tt)
+		info := tt.getStopInfo()
+		slog.Info("switched bus stop", "stop", info.Name, "towards", info.Towards)
+	} else {
+		active.Store(nil)
+		slog.Info("switched to clock")
 	}
-	active.Store(next)
-	info := next.getStopInfo()
-	slog.Info("switched bus stop", "stop", info.Name, "towards", info.Towards)
 	select {
 	case notify <- struct{}{}:
 	default:
@@ -58,8 +65,15 @@ func weatherLoop(apiKey string, tt *timeTable, weather *atomic.Pointer[string]) 
 }
 
 func main() {
-	stop := flag.Int("stop", 74640, "bus stop code")
-	stop2 := flag.Int("stop2", 77484, "secondary bus stop code (touch screen toggles between the two)")
+	var stops []int
+	flag.Func("stop", "bus stop code; repeat for multiple stops (touch cycles through stops then shows clock)", func(s string) error {
+		v, err := strconv.Atoi(s)
+		if err != nil {
+			return err
+		}
+		stops = append(stops, v)
+		return nil
+	})
 	touchDev := flag.String("touch", "", "touch input device path (auto-detected if empty)")
 	debounce := flag.Duration("debounce", 100*time.Millisecond, "minimum interval between touch-triggered stop switches")
 	rotate := flag.Bool("rotate", true, "rotate display 180 degrees")
@@ -73,25 +87,24 @@ func main() {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	}
 
-	tt1 := newTimeTable(*stop)
-	tt1.start()
+	tts := make([]*timeTable, len(stops))
+	for i, s := range stops {
+		tts[i] = newTimeTable(s)
+		tts[i].start()
+	}
 
 	var active atomic.Pointer[timeTable]
-	active.Store(tt1)
+	active.Store(tts[0])
 
+	var idx atomic.Int32
 	notify := make(chan struct{}, 1)
-	var flip func()
-	if *stop2 != 0 {
-		tt2 := newTimeTable(*stop2)
-		tt2.start()
-		go watchTouch(*touchDev, tt1, tt2, &active, notify, *debounce)
-		flip = func() { switchStop(tt1, tt2, &active, notify) }
-	}
+	flip := func() { advance(tts, &idx, &active, notify) }
+	go watchTouch(*touchDev, flip, *debounce)
 
 	var weather atomic.Pointer[string]
 	weather.Store(new("loading..."))
 
-	go weatherLoop(*apiKey, tt1, &weather)
+	go weatherLoop(*apiKey, tts[0], &weather)
 
 	err := runDisplay(&active, &weather, *rotate, *debug, *forceFB, *invert, notify, flip)
 	if err != nil {

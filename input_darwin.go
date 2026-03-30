@@ -2,11 +2,8 @@
 
 package main
 
-import (
-	"sync/atomic"
-	"time"
-)
+import "time"
 
-func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTable], notify chan<- struct{}, debounce time.Duration) {
+func watchTouch(_ string, _ func(), _ time.Duration) {
 	// No touch input on macOS preview.
 }

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -69,10 +68,9 @@ func openWithRetry(dev string) (*os.File, error) {
 	return nil, err
 }
 
-// watchTouch reads touch events and toggles the active timetable between tt1
-// and tt2 on each finger-down (BTN_TOUCH value 1) event. It sends on notify
-// after each switch so the display can redraw immediately.
-func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTable], notify chan<- struct{}, debounce time.Duration) {
+// watchTouch reads touch events and calls flip on each finger-down
+// (BTN_TOUCH value 1) event, subject to the debounce interval.
+func watchTouch(dev string, flip func(), debounce time.Duration) {
 	if dev == "" {
 		dev = findTouchDevice()
 	}
@@ -108,7 +106,7 @@ func watchTouch(dev string, tt1, tt2 *timeTable, active *atomic.Pointer[timeTabl
 				continue
 			}
 			lastSwitch = time.Now()
-			switchStop(tt1, tt2, active, notify)
+			flip()
 		}
 	}
 }

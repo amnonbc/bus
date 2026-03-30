@@ -53,10 +53,6 @@ func (p *httpPreview) serveFlip(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if p.flip == nil {
-		http.Error(w, "no second stop configured", http.StatusNotFound)
-		return
-	}
 	p.flip()
 	w.WriteHeader(http.StatusNoContent)
 }
