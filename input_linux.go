@@ -4,7 +4,6 @@ package main
 
 import (
 	"encoding/binary"
-	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -47,23 +46,17 @@ func findTouchDevice() string {
 	return ""
 }
 
-// openWithRetry opens a device file, retrying on permission errors to handle
-// the race between the service starting and udev applying group permissions.
-func openWithRetry(dev string) (*os.File, error) {
+// openWithRetry opens a device file, retrying on any error to handle the race
+// between the service starting and udev creating the device node and applying
+// group permissions.
+func openWithRetry(dev string) (f *os.File, err error) {
 	const attempts = 10
-	var err error
-	for i := range attempts {
-		if i > 0 {
-			time.Sleep(500 * time.Millisecond)
-		}
-		var f *os.File
+	for range attempts {
 		f, err = os.Open(dev)
 		if err == nil {
 			return f, nil
 		}
-		if !errors.Is(err, os.ErrPermission) {
-			return nil, err
-		}
+		time.Sleep(500 * time.Millisecond)
 	}
 	return nil, err
 }
