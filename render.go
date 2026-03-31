@@ -3,15 +3,12 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
-	"io"
 	"log/slog"
-	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	xfont "golang.org/x/image/font"
@@ -20,48 +17,8 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-const antonURL = "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf"
-
-// loadAntonTTF returns the Anton font bytes, loading from the user cache
-// directory and downloading from Google Fonts if not already cached.
-func loadAntonTTF() ([]byte, error) {
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return nil, fmt.Errorf("cache dir: %w", err)
-	}
-	path := filepath.Join(cacheDir, "bus", "Anton-Regular.ttf")
-
-	data, err := os.ReadFile(path)
-	if err == nil {
-		return data, nil
-	}
-
-	slog.Info("downloading Anton font", "url", antonURL)
-	resp, err := http.Get(antonURL)
-	if err != nil {
-		return nil, fmt.Errorf("download Anton: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("download Anton: %s", resp.Status)
-	}
-
-	data, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read Anton: %w", err)
-	}
-
-	err = os.MkdirAll(filepath.Dir(path), 0755)
-	if err != nil {
-		return data, nil
-	}
-	err = os.WriteFile(path, data, 0644)
-	if err != nil {
-		slog.Warn("could not cache Anton font", "path", path, "err", err)
-	}
-	return data, nil
-}
+//go:embed fonts/Anton-subset.ttf
+var antonTTF []byte
 
 const (
 	slotHeight      = 130
@@ -94,12 +51,7 @@ func newFace(size float64) (xfont.Face, error) {
 }
 
 func newAntonFace(size float64) (xfont.Face, error) {
-	data, err := loadAntonTTF()
-	if err != nil {
-		slog.Warn("Anton font unavailable, falling back to GoBold", "err", err)
-		return newFace(size)
-	}
-	ttf, err := opentype.Parse(data)
+	ttf, err := opentype.Parse(antonTTF)
 	if err != nil {
 		return nil, fmt.Errorf("parse Anton font: %w", err)
 	}
