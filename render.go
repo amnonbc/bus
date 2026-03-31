@@ -43,6 +43,10 @@ func loadAntonTTF() ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("download Anton: %s", resp.Status)
+	}
+
 	data, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read Anton: %w", err)
