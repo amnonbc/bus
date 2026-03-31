@@ -7,7 +7,11 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"io"
 	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	xfont "golang.org/x/image/font"
@@ -15,6 +19,45 @@ import (
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
+
+const antonURL = "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf"
+
+// loadAntonTTF returns the Anton font bytes, loading from the user cache
+// directory and downloading from Google Fonts if not already cached.
+func loadAntonTTF() ([]byte, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return nil, fmt.Errorf("cache dir: %w", err)
+	}
+	path := filepath.Join(cacheDir, "bus", "Anton-Regular.ttf")
+
+	data, err := os.ReadFile(path)
+	if err == nil {
+		return data, nil
+	}
+
+	slog.Info("downloading Anton font", "url", antonURL)
+	resp, err := http.Get(antonURL)
+	if err != nil {
+		return nil, fmt.Errorf("download Anton: %w", err)
+	}
+	defer resp.Body.Close()
+
+	data, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read Anton: %w", err)
+	}
+
+	err = os.MkdirAll(filepath.Dir(path), 0755)
+	if err != nil {
+		return data, nil
+	}
+	err = os.WriteFile(path, data, 0644)
+	if err != nil {
+		slog.Warn("could not cache Anton font", "path", path, "err", err)
+	}
+	return data, nil
+}
 
 const (
 	slotHeight      = 130
@@ -42,6 +85,27 @@ func newFace(size float64) (xfont.Face, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("new face: %w", err)
+	}
+	return face, nil
+}
+
+func newAntonFace(size float64) (xfont.Face, error) {
+	data, err := loadAntonTTF()
+	if err != nil {
+		slog.Warn("Anton font unavailable, falling back to GoBold", "err", err)
+		return newFace(size)
+	}
+	ttf, err := opentype.Parse(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse Anton font: %w", err)
+	}
+	face, err := opentype.NewFace(ttf, &opentype.FaceOptions{
+		Size:    size,
+		DPI:     72,
+		Hinting: xfont.HintingFull,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("new Anton face: %w", err)
 	}
 	return face, nil
 }
@@ -91,7 +155,7 @@ type renderer struct {
 func newClockFace(width, border int) (xfont.Face, error) {
 	available := width - 2*border
 	for size := 360.0; size >= 20; size -= 2 {
-		face, err := newFace(size)
+		face, err := newAntonFace(size)
 		if err != nil {
 			return nil, err
 		}
@@ -272,16 +336,18 @@ func (r *renderer) renderClock(img *image.RGBA, weatherStr string) {
 	smallDesc := r.smallFace.Metrics().Descent.Ceil()
 
 	const gap = 16
-	totalH := clockAsc + clockDesc + gap + smallAsc + smallDesc
-	startY := (h - totalH) / 2
 
-	timeY := startY + clockAsc
+	// Anchor date and weather at the bottom, then centre the time in the
+	// space that remains above.
+	weatherY := h - smallDesc
+	dateY := weatherY - (smallAsc + smallDesc) - gap
+
+	clockSpace := dateY - smallAsc - gap
+	timeY := (clockSpace-clockAsc-clockDesc)/2 + clockAsc
+
 	drawString(img, r.clockFace, (w-measureString(r.clockFace, timeStr))/2, timeY, timeStr, r.fg)
-
-	dateY := timeY + clockDesc + gap + smallAsc
 	drawString(img, r.smallFace, (w-measureString(r.smallFace, dateStr))/2, dateY, dateStr, r.fg)
-
-	drawString(img, r.smallFace, r.border, h-smallDesc, weatherStr, r.fg)
+	drawString(img, r.smallFace, r.border, weatherY, weatherStr, r.fg)
 }
 
 // renderFrame draws a complete frame onto img. If tt is nil the clock screen
