@@ -5,6 +5,7 @@ package main
 
 import (
 	"log/slog"
+	"os/exec"
 	"sync/atomic"
 )
 
@@ -23,6 +24,10 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	newHTTPPreview(buf, flip).register()
 	slog.Info("preview server", "url", "http://localhost:8080")
 	go listenHTTP()
+	err = exec.Command("open", "http://localhost:8080").Start()
+	if err != nil {
+		slog.Warn("could not open browser", "err", err)
+	}
 	buf.runLoop(active, weather, notify)
 	return nil
 }
