@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -46,35 +47,54 @@ func findTouchDevice() string {
 	return ""
 }
 
-// openWithRetry opens a device file, retrying on any error to handle the race
-// between the service starting and udev creating the device node and applying
-// group permissions.
-func openWithRetry(dev string) (f *os.File, err error) {
-	const attempts = 10
-	for range attempts {
-		f, err = os.Open(dev)
-		if err == nil {
-			return f, nil
-		}
-		time.Sleep(500 * time.Millisecond)
+// openTouchDevice blocks until the touch device at dev (or an auto-detected
+// device if dev is empty) exists and is accessible, then returns an open file.
+// It uses inotify on /dev/input to avoid polling.
+func openTouchDevice(dev string) (*os.File, error) {
+	ifd, err := syscall.InotifyInit1(syscall.IN_CLOEXEC)
+	if err != nil {
+		return nil, fmt.Errorf("inotify init: %w", err)
 	}
-	return nil, err
+	defer syscall.Close(ifd)
+	_, err = syscall.InotifyAddWatch(ifd, "/dev/input", syscall.IN_CREATE|syscall.IN_ATTRIB)
+	if err != nil {
+		return nil, fmt.Errorf("inotify watch /dev/input: %w", err)
+	}
+
+	buf := make([]byte, 4096)
+	for {
+		if dev == "" {
+			dev = findTouchDevice()
+		}
+		if dev != "" {
+			f, err := os.Open(dev)
+			if err == nil {
+				slog.Info("watching touch device", "dev", dev)
+				return f, nil
+			}
+			if os.IsPermission(err) {
+				// Node exists but udev has not yet applied group permissions;
+				// watch the file itself so we wake as soon as IN_ATTRIB fires.
+				syscall.InotifyAddWatch(ifd, dev, syscall.IN_ATTRIB)
+			} else if !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+		slog.Info("waiting for touch device", "dev", dev)
+		_, err = syscall.Read(ifd, buf)
+		if err != nil {
+			return nil, fmt.Errorf("inotify read: %w", err)
+		}
+	}
 }
+
 
 // watchTouch reads touch events and calls flip on each finger-down
 // (BTN_TOUCH value 1) event, subject to the debounce interval.
 func watchTouch(dev string, flip func(), debounce time.Duration) {
-	if dev == "" {
-		dev = findTouchDevice()
-	}
-	if dev == "" {
-		slog.Warn("no touch device found; touch switching disabled")
-		return
-	}
-
-	f, err := openWithRetry(dev)
+	f, err := openTouchDevice(dev)
 	if err != nil {
-		slog.Error("open touch device", "dev", dev, "err", err)
+		slog.Error("open touch device", "err", err)
 		return
 	}
 	defer f.Close()
@@ -82,9 +102,8 @@ func watchTouch(dev string, flip func(), debounce time.Duration) {
 	// Grab the device exclusively so the kernel doesn't also feed events to
 	// /dev/mice, which would cause the DRM hardware cursor to appear on screen.
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), eviocgrab, 1); errno != 0 {
-		slog.Warn("EVIOCGRAB", "dev", dev, "err", errno)
+		slog.Warn("EVIOCGRAB", "dev", f.Name(), "err", errno)
 	}
-	slog.Info("watching touch device", "dev", dev)
 
 	var ev inputEvent
 	var lastSwitch time.Time
