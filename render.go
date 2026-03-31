@@ -86,16 +86,16 @@ type renderer struct {
 	headerClr   *image.Uniform // header text colour (dimmer than fg)
 }
 
-// newClockFace returns the largest face whose rendered "00:00:00" fits within
+// newClockFace returns the largest face whose rendered "00:00" fits within
 // the available width (screen width minus both borders).
 func newClockFace(width, border int) (xfont.Face, error) {
 	available := width - 2*border
-	for size := 200.0; size >= 20; size -= 2 {
+	for size := 360.0; size >= 20; size -= 2 {
 		face, err := newFace(size)
 		if err != nil {
 			return nil, err
 		}
-		if measureString(face, "00:00:00") <= available {
+		if measureString(face, "00:00") <= available {
 			slog.Debug("clock face", "size", size, "available", available)
 			return face, nil
 		}
@@ -263,7 +263,7 @@ func (r *renderer) renderClock(img *image.RGBA, weatherStr string) {
 	h := img.Bounds().Max.Y
 
 	now := time.Now()
-	timeStr := now.Format("3:04:05")
+	timeStr := now.Format("3:04")
 	dateStr := now.Format("Monday 2 January 2006")
 
 	clockAsc := r.clockFace.Metrics().Ascent.Ceil()
