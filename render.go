@@ -34,8 +34,8 @@ func smoothstep(t float64) float64 {
 	return t * t * (3 - 2*t)
 }
 
-func newFace(size float64) (xfont.Face, error) {
-	ttf, err := opentype.Parse(gobold.TTF)
+func newFaceFromBytes(data []byte, size float64) (xfont.Face, error) {
+	ttf, err := opentype.Parse(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse font: %w", err)
 	}
@@ -50,20 +50,12 @@ func newFace(size float64) (xfont.Face, error) {
 	return face, nil
 }
 
+func newFace(size float64) (xfont.Face, error) {
+	return newFaceFromBytes(gobold.TTF, size)
+}
+
 func newAntonFace(size float64) (xfont.Face, error) {
-	ttf, err := opentype.Parse(antonTTF)
-	if err != nil {
-		return nil, fmt.Errorf("parse Anton font: %w", err)
-	}
-	face, err := opentype.NewFace(ttf, &opentype.FaceOptions{
-		Size:    size,
-		DPI:     72,
-		Hinting: xfont.HintingFull,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("new Anton face: %w", err)
-	}
-	return face, nil
+	return newFaceFromBytes(antonTTF, size)
 }
 
 func measureString(face xfont.Face, s string) int {
@@ -167,6 +159,14 @@ func (r *renderer) close() {
 	r.bigFace.Close()
 	r.smallFace.Close()
 	r.clockFace.Close()
+}
+
+// resetAnimation clears all scroll animation state and sets the current stop ID.
+func (r *renderer) resetAnimation(stopID int) {
+	r.stopID = stopID
+	r.prevTopETA = time.Time{}
+	r.scrollStart = time.Time{}
+	r.scrollBuses = nil
 }
 
 // isAnimating reports whether a scroll animation is currently in progress.
@@ -311,10 +311,7 @@ func (r *renderer) renderClock(img *image.RGBA, weatherStr string) {
 func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string) {
 	if tt == nil {
 		if r.stopID != -1 {
-			r.stopID = -1
-			r.prevTopETA = time.Time{}
-			r.scrollStart = time.Time{}
-			r.scrollBuses = nil
+			r.resetAnimation(-1)
 		}
 		r.renderClock(img, weatherStr)
 		return
@@ -325,10 +322,7 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 
 	// Reset animation state when the stop changes (e.g. user tapped to switch).
 	if tt.stopID != r.stopID {
-		r.stopID = tt.stopID
-		r.prevTopETA = time.Time{}
-		r.scrollStart = time.Time{}
-		r.scrollBuses = nil
+		r.resetAnimation(tt.stopID)
 	}
 
 	draw.Draw(img, img.Bounds(), r.bg, image.Point{}, draw.Src)
