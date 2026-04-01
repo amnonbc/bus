@@ -84,6 +84,7 @@ func logClockSkew(raw json.RawMessage) {
 		return
 	}
 	skew := time.UnixMilli(tsMS).Sub(time.Now())
+	metricTFLClockSkew.Set(skew.Seconds())
 	if skew.Abs() > 10*time.Second {
 		slog.Warn("TFL clock skew", "skew", skew)
 		return
@@ -113,12 +114,15 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 
 	r, err := httpClient.Do(req)
 	if err != nil {
+		metricTFLRequests.WithLabelValues("error").Inc()
 		return nil, StopInfo{}, err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != 200 {
+		metricTFLRequests.WithLabelValues("error").Inc()
 		return nil, StopInfo{}, fmt.Errorf("bad status %s", r.Status)
 	}
+	metricTFLRequests.WithLabelValues("ok").Inc()
 
 	var buses []Bus
 	var info StopInfo
@@ -157,5 +161,6 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	slices.SortFunc(buses, func(a, b Bus) int {
 		return a.ETA.Compare(b.ETA)
 	})
+	metricTFLBuses.Set(float64(len(buses)))
 	return buses, info, nil
 }

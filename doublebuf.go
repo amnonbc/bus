@@ -113,7 +113,9 @@ func (fb *frameBuffer) runLoop(active *atomic.Pointer[timeTable], weather *atomi
 	wasAnimating := false
 	for {
 		back := fb.backBuf()
+		renderStart := time.Now()
 		fb.r.renderFrame(back, active.Load(), *weather.Load())
+		metricFrameRender.Observe(time.Since(renderStart).Seconds())
 		fb.hw.Blit(back)
 		fb.publishFrame()
 		if fb.r.isAnimating() != wasAnimating {

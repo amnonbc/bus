@@ -40,12 +40,14 @@ func GetWeather(baseURL, apiKey, location string) (Weather, error) {
 
 	r, err := httpClient.Get(uu.String())
 	if err != nil {
+		metricWeatherRequests.WithLabelValues("error").Inc()
 		slog.Error("weather request", "err", err)
 		return w, err
 	}
 	defer r.Body.Close()
 	slog.Info("weather update", "status", r.Status)
 	if r.StatusCode != 200 {
+		metricWeatherRequests.WithLabelValues("error").Inc()
 		var resp ErrResponse
 		err = json.NewDecoder(r.Body).Decode(&resp)
 		if err != nil {
@@ -53,6 +55,7 @@ func GetWeather(baseURL, apiKey, location string) (Weather, error) {
 		}
 		return w, errors.New(resp.Message)
 	}
+	metricWeatherRequests.WithLabelValues("ok").Inc()
 	err = json.NewDecoder(r.Body).Decode(&w)
 	return w, err
 }

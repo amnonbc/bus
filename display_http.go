@@ -5,11 +5,14 @@ package main
 import (
 	_ "embed"
 	"errors"
+	_ "expvar"
 	"image/png"
 	"log/slog"
 	"net/http"
 	_ "net/http/pprof"
 	"syscall"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 //go:embed index.html
@@ -61,6 +64,7 @@ func (p *httpPreview) register() {
 	http.HandleFunc("/frame.png", p.serveFrame)
 	http.HandleFunc("/favicon.ico", p.serveFavicon)
 	http.HandleFunc("/flip", p.serveFlip)
+	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/", p.serveIndex)
 }
 
