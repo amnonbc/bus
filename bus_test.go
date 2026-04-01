@@ -15,9 +15,9 @@ import (
 // tbHandler routes slog output through t.Log so it is shown only on failure.
 type tbHandler struct{ tb testing.TB }
 
-func (h tbHandler) Enabled(context.Context, slog.Level) bool  { return true }
-func (h tbHandler) WithAttrs([]slog.Attr) slog.Handler        { return h }
-func (h tbHandler) WithGroup(string) slog.Handler             { return h }
+func (h tbHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h tbHandler) WithAttrs([]slog.Attr) slog.Handler       { return h }
+func (h tbHandler) WithGroup(string) slog.Handler            { return h }
 func (h tbHandler) Handle(_ context.Context, r slog.Record) error {
 	h.tb.Log(r.Message)
 	return nil

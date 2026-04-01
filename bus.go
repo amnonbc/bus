@@ -69,6 +69,28 @@ func (m *uraMessage) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// logClockSkew parses a URA type-4 message [4, URAVersion, TimeStamp_ms] and
+// logs the difference between TFL's server clock and the local machine clock
+// if the difference is more than 10 seconds.
+func logClockSkew(raw json.RawMessage) {
+	var arr [3]json.RawMessage
+	err := json.Unmarshal(raw, &arr)
+	if err != nil {
+		return
+	}
+	var tsMS int64
+	err = json.Unmarshal(arr[2], &tsMS)
+	if err != nil {
+		return
+	}
+	skew := time.UnixMilli(tsMS).Sub(time.Now())
+	if skew.Abs() > 10*time.Second {
+		slog.Warn("TFL clock skew", "skew", skew)
+		return
+	}
+	slog.Debug("TFL clock skew", "skew", skew)
+}
+
 // GetBusData fetches arrivals and stop metadata for the given stop in a single
 // request. The URA API returns type-1 messages in the form:
 //
@@ -111,11 +133,21 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 			slog.Error("decode TFL response", "err", err)
 			return nil, StopInfo{}, err
 		}
+		var arr []json.RawMessage
+		var msgType int
+		json.Unmarshal(raw, &arr)
+		if len(arr) > 0 {
+			json.Unmarshal(arr[0], &msgType)
+		}
+		if msgType == 4 {
+			logClockSkew(raw)
+			continue
+		}
 		var msg uraMessage
 		err = json.Unmarshal(raw, &msg)
 		if err != nil {
-			slog.Debug("decode TFL response", "err", err)
-			continue // non-type-1 or malformed row
+			slog.Warn("decode TFL response", "err", err)
+			continue // not type 1, type 4 or malformed row
 		}
 		if info.Name == "" {
 			info = msg.Stop

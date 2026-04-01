@@ -83,6 +83,12 @@ func main() {
 	apiKey := flag.String("weather-key", "dd719ea57f1d4d44be6151200251209", "weatherapi.com API key")
 	flag.Parse()
 
+	if len(stops) == 0 {
+		fmt.Fprintln(os.Stderr, "error: at least one -stop flag is required")
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	if *debug {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	}
