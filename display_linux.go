@@ -7,10 +7,22 @@ import (
 	"bus/dev/fb"
 	"fmt"
 	"log/slog"
+	"os"
+	"strings"
 	"sync/atomic"
 )
 
+func logBoardModel() {
+	data, err := os.ReadFile("/proc/device-tree/model")
+	if err != nil {
+		return
+	}
+	slog.Info("board", "model", strings.TrimRight(string(data), "\x00"))
+}
+
 func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool, debug bool, forceFB bool, invert bool, notify <-chan struct{}, flip func()) error {
+	logBoardModel()
+
 	var hw blitter
 
 	if debug {
