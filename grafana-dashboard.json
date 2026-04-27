@@ -1,0 +1,224 @@
+{
+  "title": "Bus Display",
+  "uid": "bus-display",
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "schemaVersion": 38,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "TFL API Requests/min",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "rate(bus_tfl_requests_total{result=\"ok\"}[10m]) * 60",
+          "datasource": "bus", "legendFormat": "ok"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "TFL Errors/min",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "rate(bus_tfl_requests_total{result=\"error\"}[10m]) * 60",
+          "datasource": "bus", "legendFormat": "errors"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "thresholds": {
+          "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 0.01 }
+          ]
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Buses at Stop",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "bus_tfl_buses", "datasource": "bus", "legendFormat": "buses" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "TFL Clock Skew",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        { "expr": "bus_tfl_clock_skew_seconds * 1000", "datasource": "bus", "legendFormat": "skew ms" }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "unit": "ms",
+        "thresholds": {
+          "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 1000 },
+            { "color": "red", "value": 10000 }
+          ]
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "TFL API Requests",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(bus_tfl_requests_total[10m]) * 60",
+          "datasource": "bus", "legendFormat": "{{result}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqpm" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Buses at Stop",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "bus_tfl_buses", "datasource": "bus", "legendFormat": "buses" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Frame Render Time",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(bus_frame_render_seconds_bucket[10m]))",
+          "datasource": "bus", "legendFormat": "p99"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(bus_frame_render_seconds_bucket[10m]))",
+          "datasource": "bus", "legendFormat": "p50"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "TFL Clock Skew",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "bus_tfl_clock_skew_seconds * 1000", "datasource": "bus", "legendFormat": "skew" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Go Heap",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "go_memory_classes_heap_objects_bytes{job=\"bus\"}",
+          "datasource": "bus", "legendFormat": "heap objects"
+        },
+        {
+          "expr": "go_memory_classes_heap_released_bytes{job=\"bus\"}",
+          "datasource": "bus", "legendFormat": "heap released"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Goroutines",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "go_goroutines{job=\"bus\"}",
+          "datasource": "bus", "legendFormat": "goroutines"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GC Runs/min",
+      "gridPos": { "x": 0, "y": 28, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(go_gc_cycles_total_gc_cycles_total{job=\"bus\"}[10m]) * 60",
+          "datasource": "bus", "legendFormat": "total"
+        },
+        {
+          "expr": "rate(go_gc_cycles_automatic_gc_cycles_total{job=\"bus\"}[10m]) * 60",
+          "datasource": "bus", "legendFormat": "automatic"
+        },
+        {
+          "expr": "rate(go_gc_cycles_forced_gc_cycles_total{job=\"bus\"}[10m]) * 60",
+          "datasource": "bus", "legendFormat": "forced"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "GC Pause Duration",
+      "gridPos": { "x": 12, "y": 28, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(go_gc_pauses_seconds_bucket{job=\"bus\"}[10m]))",
+          "datasource": "bus", "legendFormat": "p99"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(go_gc_pauses_seconds_bucket{job=\"bus\"}[10m]))",
+          "datasource": "bus", "legendFormat": "p50"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Go Memory",
+      "gridPos": { "x": 0, "y": 36, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "go_memory_classes_total_bytes{job=\"bus\"}",
+          "datasource": "bus", "legendFormat": "total"
+        },
+        {
+          "expr": "go_memory_classes_heap_objects_bytes{job=\"bus\"}",
+          "datasource": "bus", "legendFormat": "heap objects"
+        },
+        {
+          "expr": "go_memory_classes_heap_unused_bytes{job=\"bus\"}",
+          "datasource": "bus", "legendFormat": "heap unused"
+        },
+        {
+          "expr": "go_memory_classes_heap_released_bytes{job=\"bus\"}",
+          "datasource": "bus", "legendFormat": "heap released"
+        },
+        {
+          "expr": "go_memory_classes_heap_stacks_bytes{job=\"bus\"}",
+          "datasource": "bus", "legendFormat": "stacks"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "GC Heap Alloc Rate",
+      "gridPos": { "x": 12, "y": 36, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(go_gc_heap_allocs_bytes_total{job=\"bus\"}[10m])",
+          "datasource": "bus", "legendFormat": "alloc rate"
+        },
+        {
+          "expr": "rate(go_gc_heap_frees_bytes_total{job=\"bus\"}[10m])",
+          "datasource": "bus", "legendFormat": "free rate"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" } }
+    }
+  ]
+}

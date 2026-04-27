@@ -3,13 +3,14 @@
 package main
 
 import (
-	"bus/dev/drm"
-	"bus/dev/fb"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/amnonbc/pidisp/drm"
+	"github.com/amnonbc/pidisp/fb"
 )
 
 func logBoardModel() {

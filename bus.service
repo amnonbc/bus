@@ -1,0 +1,17 @@
+[Unit]
+Description=Bus times
+After=dev-dri-card0.device network-online.target
+Wants=dev-dri-card0.device network-online.target
+
+[Service]
+ExecStart=/home/pi/bus/bus -stop 74640 -stop 77484 -touch /dev/input/event1
+Restart=always
+User=pi
+SupplementaryGroups=input
+RestartSec=10s
+StartLimitInterval=0
+StartLimitBurst=0
+
+[Install]
+WantedBy=multi-user.target
+
