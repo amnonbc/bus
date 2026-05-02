@@ -1,6 +1,6 @@
 # bus
 
-<img width="800" height="480" alt="bus" src="https://github.com/user-attachments/assets/fb81db42-0186-4042-8ce2-9c69c23f6730" />
+<img width="800" height="480" alt="bus" src="https://github.com/user-attachments/assets/53ef6a1c-1bac-4cc8-b989-a40ba68e7459" />
 
 A full-screen bus arrival display that runs on a Raspberry Pi, showing the next buses due at a nearby stop using the [TFL Countdown](http://countdown.tfl.gov.uk/) API, along with the current weather and time. Tested on Pi 1 (ARMv6, fbdev 16 bpp) and Pi 2 (ARMv7, DRM/KMS).
 
