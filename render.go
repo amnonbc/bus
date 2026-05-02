@@ -9,8 +9,10 @@ import (
 	"image/color"
 	"image/draw"
 	"log/slog"
+	"os"
 	"time"
 
+	"golang.org/x/image/colornames"
 	xfont "golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/opentype"
@@ -52,6 +54,23 @@ func newFaceFromBytes(data []byte, size float64) (xfont.Face, error) {
 
 func newFace(size float64) (xfont.Face, error) {
 	return newFaceFromBytes(gobold.TTF, size)
+}
+
+func newFaceFromFile(path string, size float64, fallback xfont.Face) (xfont.Face, error) {
+	if path == "" {
+		return fallback, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		slog.Warn("could not load custom font", "path", path, "err", err)
+		return fallback, nil
+	}
+	face, err := newFaceFromBytes(data, size)
+	if err != nil {
+		slog.Warn("could not parse custom font", "path", path, "err", err)
+		return fallback, nil
+	}
+	return face, nil
 }
 
 func newAntonFace(size float64) (xfont.Face, error) {
@@ -116,8 +135,16 @@ func newClockFace(width, border int) (xfont.Face, error) {
 	return newFace(20)
 }
 
-func newRenderer(width int, invert bool) (*renderer, error) {
-	bigFace, err := newFace(100)
+func parseColor(s string) *image.Uniform {
+	if c, ok := colornames.Map[s]; ok {
+		return image.NewUniform(c)
+	}
+	slog.Warn("could not parse color - defaulting to white", "color", s)
+	return image.NewUniform(color.White)
+}
+
+func newRenderer(width int, invert bool, fontPath string, fontHeight int, textColor string) (*renderer, error) {
+	bigFace, err := newFace(float64(fontHeight))
 	if err != nil {
 		return nil, err
 	}
@@ -136,14 +163,28 @@ func newRenderer(width int, invert bool) (*renderer, error) {
 		smallFace.Close()
 		return nil, err
 	}
+
+	// Load custom font for big face (bus numbers and times) if provided
+	if fontPath != "" {
+		customBigFace, err := newFaceFromFile(fontPath, float64(fontHeight), bigFace)
+		if err == nil && customBigFace != bigFace {
+			bigFace = customBigFace
+		}
+	}
+
 	fg := image.NewUniform(color.White)
 	bg := image.NewUniform(color.Black)
 	headerClr := image.NewUniform(color.Gray{Y: 180})
+
 	if invert {
 		fg = image.NewUniform(color.Black)
 		bg = image.NewUniform(color.White)
 		headerClr = image.NewUniform(color.Gray{Y: 75})
 	}
+	if textColor != "" {
+		fg = parseColor(textColor)
+	}
+
 	return &renderer{
 		bigFace:   bigFace,
 		smallFace: smallFace,

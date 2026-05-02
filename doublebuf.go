@@ -23,6 +23,16 @@ func newPool[T any](newFn func() *T) pool[T] {
 func (p *pool[T]) get() *T  { return p.p.Get().(*T) }
 func (p *pool[T]) put(v *T) { p.p.Put(v) }
 
+type fbOptions struct {
+	rotate     bool
+	debug      bool
+	forceFB    bool
+	invert     bool
+	fontPath   string
+	fontHeight int
+	textColor  string
+}
+
 type frameBuffer struct {
 	mu    sync.RWMutex
 	bufs  [2]image.RGBA
@@ -33,8 +43,8 @@ type frameBuffer struct {
 	hw    blitter
 }
 
-func newFrameBuffer(width, height int, hw blitter, invert bool) (*frameBuffer, error) {
-	r, err := newRenderer(width, invert)
+func newFrameBuffer(width, height int, hw blitter, opts fbOptions) (*frameBuffer, error) {
+	r, err := newRenderer(width, opts.invert, opts.fontPath, opts.fontHeight, opts.textColor)
 	if err != nil {
 		return nil, err
 	}

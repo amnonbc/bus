@@ -80,6 +80,9 @@ func main() {
 	debug := flag.Bool("debug", false, "log DRM device information and other diagnostic output")
 	forceFB := flag.Bool("fb", false, "force framebuffer rendering, skipping DRM even if available")
 	invert := flag.Bool("white", false, "white background: render black text on white instead of white on black")
+	fontPath := flag.String("font", "", "path to TTF font file for bus numbers and times (default: Go Bold)")
+	fontHeight := flag.Int("points", 100, "font height in points for bus numbers and times")
+	textColor := flag.String("color", "", "text color as X11 color name (e.g. white, orange, darkred, cornflowerblue; default: white)")
 	apiKey := flag.String("weather-key", "dd719ea57f1d4d44be6151200251209", "weatherapi.com API key")
 	flag.Parse()
 
@@ -112,7 +115,15 @@ func main() {
 
 	go weatherLoop(*apiKey, tts[0], &weather)
 
-	err := runDisplay(&active, &weather, *rotate, *debug, *forceFB, *invert, notify, flip)
+	err := runDisplay(&active, &weather, fbOptions{
+		rotate:     *rotate,
+		debug:      *debug,
+		forceFB:    *forceFB,
+		invert:     *invert,
+		fontPath:   *fontPath,
+		fontHeight: *fontHeight,
+		textColor:  *textColor,
+	}, notify, flip)
 	if err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)

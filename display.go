@@ -19,13 +19,13 @@ func logBoardModel() {
 	slog.Info("board", "model", strings.TrimRight(string(data), "\x00"))
 }
 
-func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], rotate bool, debug bool, forceFB bool, invert bool, notify <-chan struct{}, flip func()) error {
+func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[string], opts fbOptions, notify <-chan struct{}, flip func()) error {
 	logBoardModel()
 
 	hw, err := pidisp.Open(pidisp.Options{
-		Rotate:  rotate,
-		ForceFB: forceFB,
-		Debug:   debug,
+		Rotate:  opts.rotate,
+		ForceFB: opts.forceFB,
+		Debug:   opts.debug,
 	})
 	if err != nil {
 		slog.Info("hardware display unavailable", "err", err)
@@ -34,7 +34,7 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 		defer hw.Close()
 	}
 
-	buf, err := newFrameBuffer(hw.Width(), hw.Height(), hw, invert)
+	buf, err := newFrameBuffer(hw.Width(), hw.Height(), hw, opts)
 	if err != nil {
 		return err
 	}
