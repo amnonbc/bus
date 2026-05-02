@@ -89,12 +89,14 @@ Copy the binary to the Pi with `scp bus pi@raspberrypi:bus/bus`.
 ```
 ./bus [flags]
 
-  -stop int          TFL bus stop code (default 74640)
-  -stop2 int         secondary bus stop code; touch screen toggles between the two
+  -stop int          TFL bus stop code; repeat for multiple stops (touch cycles through stops then shows clock)
   -touch str         touch input device path (auto-detected if empty)
   -debounce dur      minimum interval between touch-triggered stop switches (default 100ms)
   -rotate            rotate display 180 degrees (default true)
   -white             white background: render black text on white instead of white on black
+  -font str          path to TTF font file for bus numbers and times (default: Go Bold)
+  -points int        font height in points for bus numbers and times (default 100)
+  -color str         text color as X11 color name (e.g. white, orange, darkred, cornflowerblue; default: white)
   -fb                force framebuffer (/dev/fb0) rendering, skipping DRM even if available (useful for testing the fbdev path on a machine that supports both)
   -debug             log DRM device information and other diagnostic output
   -weather-key str   weatherapi.com API key
