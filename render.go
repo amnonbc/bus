@@ -114,7 +114,6 @@ type renderer struct {
 	border      int            // left/right margin in pixels; proportional to screen width
 	fg          *image.Uniform // foreground (text) colour
 	bg          *image.Uniform // background colour
-	headerClr   *image.Uniform // header text colour (dimmer than fg)
 }
 
 // newClockFace returns the largest face whose rendered "00:00" fits within
@@ -174,12 +173,10 @@ func newRenderer(width int, invert bool, fontPath string, fontHeight int, textCo
 
 	fg := image.NewUniform(color.White)
 	bg := image.NewUniform(color.Black)
-	headerClr := image.NewUniform(color.Gray{Y: 180})
 
 	if invert {
 		fg = image.NewUniform(color.Black)
 		bg = image.NewUniform(color.White)
-		headerClr = image.NewUniform(color.Gray{Y: 75})
 	}
 	if textColor != "" {
 		fg = parseColor(textColor)
@@ -192,7 +189,6 @@ func newRenderer(width int, invert bool, fontPath string, fontHeight int, textCo
 		border:    border,
 		fg:        fg,
 		bg:        bg,
-		headerClr: headerClr,
 	}, nil
 }
 
@@ -311,7 +307,7 @@ func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 		header += " - To: " + info.Towards
 	}
 	if header != "" {
-		drawString(img, r.smallFace, r.border, r.smallFace.Metrics().Ascent.Ceil(), header, r.headerClr)
+		drawString(img, r.smallFace, r.border, r.smallFace.Metrics().Ascent.Ceil(), header, r.fg)
 	}
 }
 
