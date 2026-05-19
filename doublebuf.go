@@ -35,9 +35,7 @@ type fbOptions struct {
 
 type frameBuffer struct {
 	mu    sync.RWMutex
-	bufs  [2]image.RGBA
-	front int              // index of the front (display) buffer; protected by mu
-	back  int              // index of the back (render) buffer; protected by mu
+	front *image.RGBA      // pointer to the front (display) buffer; protected by mu
 	pool  pool[image.RGBA] // recycles image snapshots for copyFront
 	r     *renderer
 	hw    blitter
@@ -48,17 +46,16 @@ func newFrameBuffer(width, height int, hw blitter, opts fbOptions) (*frameBuffer
 	if err != nil {
 		return nil, err
 	}
-	rect := image.Rect(0, 0, width, height)
 	size := width * height * 4
 	fb := &frameBuffer{
-		front: 0,
-		back:  1,
+		// Initialize front to the current back buffer. On the first iteration of runLoop,
+		// we'll render into this buffer and flip it (making it the new front), so we start
+		// in a consistent state. This pointer is updated by publishFrame() on each frame.
+		front: hw.BackBuffer(),
 		pool:  newPool(func() *image.RGBA { return &image.RGBA{Pix: make([]byte, size)} }),
 		r:     r,
 		hw:    hw,
 	}
-	fb.bufs[0] = *image.NewRGBA(rect)
-	fb.bufs[1] = *image.NewRGBA(rect)
 	return fb, nil
 }
 
@@ -66,19 +63,12 @@ func (fb *frameBuffer) close() {
 	fb.r.close()
 }
 
-// backBuf returns the buffer to draw into for the next frame.
-func (fb *frameBuffer) backBuf() *image.RGBA {
-	fb.mu.RLock()
-	defer fb.mu.RUnlock()
-	return &fb.bufs[fb.back]
-}
-
 // copyFront returns a snapshot of the front buffer using a pooled pixel slice.
 // The lock is held only for the pixel copy, not for any subsequent encoding.
 // Call recycle when done to return the slice to the pool.
 func (fb *frameBuffer) copyFront() *image.RGBA {
 	fb.mu.RLock()
-	src := &fb.bufs[fb.front]
+	src := fb.front
 	img := fb.pool.get()
 	img.Stride = src.Stride
 	img.Rect = src.Rect
@@ -92,27 +82,21 @@ func (fb *frameBuffer) recycle(img *image.RGBA) {
 	fb.pool.put(img)
 }
 
-// publishFrame swaps back and front, making the just-rendered frame
+// publishFrame updates the front buffer pointer, making the just-rendered frame
 // visible to readers. Blocks if a reader is currently encoding the front buffer.
-func (fb *frameBuffer) publishFrame() {
+func (fb *frameBuffer) publishFrame(back *image.RGBA) {
 	fb.mu.Lock()
-	fb.front, fb.back = fb.back, fb.front
+	fb.front = back
 	fb.mu.Unlock()
 }
 
 // blitter writes a rendered frame to a hardware display (e.g. framebuffer).
-// noopBlitter is used on platforms with no physical display.
 type blitter interface {
 	Width() int
 	Height() int
-	Blit(img *image.RGBA)
+	BackBuffer() *image.RGBA
+	Flip()
 }
-
-type noopBlitter struct{}
-
-func (noopBlitter) Width() int       { return 0 }
-func (noopBlitter) Height() int      { return 0 }
-func (noopBlitter) Blit(*image.RGBA) {}
 
 // runLoop is the shared render loop used on all platforms. It renders a frame
 // each tick (or immediately on notify), publishes it via double buffering for
@@ -122,12 +106,12 @@ func (fb *frameBuffer) runLoop(active *atomic.Pointer[timeTable], weather *atomi
 	defer tick.Stop()
 	wasAnimating := false
 	for {
-		back := fb.backBuf()
+		back := fb.hw.BackBuffer()
 		renderStart := time.Now()
 		fb.r.renderFrame(back, active.Load(), *weather.Load())
 		metricFrameRender.Observe(time.Since(renderStart).Seconds())
-		fb.hw.Blit(back)
-		fb.publishFrame()
+		fb.hw.Flip()
+		fb.publishFrame(back)
 		if fb.r.isAnimating() != wasAnimating {
 			if fb.r.isAnimating() {
 				tick.Reset(33 * time.Millisecond) // ~30 fps during animation
