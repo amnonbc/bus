@@ -81,8 +81,9 @@ func main() {
 	forceFB := flag.Bool("fb", false, "force framebuffer rendering, skipping DRM even if available")
 	invert := flag.Bool("white", false, "white background: render black text on white instead of white on black")
 	fontPath := flag.String("font", "", "path to TTF font file for bus numbers and times (default: Go Bold)")
-	fontHeight := flag.Int("points", 100, "font height in points for bus numbers and times")
+	fontHeight := flag.Int("points", 120, "font height in points for bus numbers and times")
 	textColor := flag.String("color", "", "text color as X11 color name (e.g. white, orange, darkred, cornflowerblue; default: white)")
+	async := flag.Bool("async", false, "enable async display flips in pidisp")
 	apiKey := flag.String("weather-key", "dd719ea57f1d4d44be6151200251209", "weatherapi.com API key")
 	flag.Parse()
 
@@ -123,6 +124,7 @@ func main() {
 		fontPath:   *fontPath,
 		fontHeight: *fontHeight,
 		textColor:  *textColor,
+		async:      *async,
 	}, notify, flip)
 	if err != nil {
 		slog.Error("fatal", "err", err)

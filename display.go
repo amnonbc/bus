@@ -23,9 +23,10 @@ func runDisplay(active *atomic.Pointer[timeTable], weather *atomic.Pointer[strin
 	logBoardModel()
 
 	hw, err := pidisp.Open(pidisp.Options{
-		Rotate:  opts.rotate,
-		ForceFB: opts.forceFB,
-		Debug:   opts.debug,
+		Rotate:    opts.rotate,
+		ForceFB:   opts.forceFB,
+		Debug:     opts.debug,
+		AsyncFlip: opts.async,
 	})
 	if err != nil {
 		slog.Info("hardware display unavailable", "err", err)
@@ -79,6 +80,6 @@ func newFallbackDisplay() *fallbackDisplay {
 func (d *fallbackDisplay) Width() int              { return fallbackWidth }
 func (d *fallbackDisplay) Height() int             { return fallbackHeight }
 func (d *fallbackDisplay) BackBuffer() *image.RGBA { return d.bufs[1-d.active] }
-func (d *fallbackDisplay) Flip()                   { d.active = 1 - d.active }
+func (d *fallbackDisplay) Flip() error             { d.active = 1 - d.active; return nil }
 func (d *fallbackDisplay) Blit(*image.RGBA)        {}
 func (d *fallbackDisplay) Close()                  {}

@@ -3,6 +3,7 @@ package main
 
 import (
 	"image"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +32,7 @@ type fbOptions struct {
 	fontPath   string
 	fontHeight int
 	textColor  string
+	async      bool
 }
 
 type frameBuffer struct {
@@ -95,7 +97,7 @@ type blitter interface {
 	Width() int
 	Height() int
 	BackBuffer() *image.RGBA
-	Flip()
+	Flip() error
 }
 
 // runLoop is the shared render loop used on all platforms. It renders a frame
@@ -110,7 +112,10 @@ func (fb *frameBuffer) runLoop(active *atomic.Pointer[timeTable], weather *atomi
 		renderStart := time.Now()
 		fb.r.renderFrame(back, active.Load(), *weather.Load())
 		metricFrameRender.Observe(time.Since(renderStart).Seconds())
-		fb.hw.Flip()
+		err := fb.hw.Flip()
+		if err != nil {
+			slog.Error("flip failed", "err", err)
+		}
 		fb.publishFrame(back)
 		if fb.r.isAnimating() != wasAnimating {
 			if fb.r.isAnimating() {
