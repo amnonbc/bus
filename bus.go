@@ -24,26 +24,40 @@ type Bus struct {
 	ETA    time.Time
 }
 
+type StatusMessage struct {
+	Text     string
+	Type     int
+	Priority int
+	Start    time.Time
+	Expire   time.Time
+}
+
 type StopInfo struct {
 	Name    string
 	Towards string
 	Lat     float64
 	Lon     float64
+	State   int
+	Status  []StatusMessage
 }
 
 // uraMessage is a decoded URA type-1 row:
 //
-//	[1, StopPointName, Towards, Latitude, Longitude, LineName, EstimatedTime_ms]
+//	[1, StopPointName, Towards, StopPointState, Latitude, Longitude, LineName, EstimatedTime_ms]
 type uraMessage struct {
-	Stop StopInfo
-	Bus  Bus
+	Stop  StopInfo
+	Bus   Bus
+	State int
 }
 
 func (m *uraMessage) UnmarshalJSON(data []byte) error {
-	var arr [7]json.RawMessage
+	var arr []json.RawMessage
 	err := json.Unmarshal(data, &arr)
 	if err != nil {
 		return err
+	}
+	if len(arr) < 7 {
+		return fmt.Errorf("type-1 message too short")
 	}
 	var msgType int
 	err = json.Unmarshal(arr[0], &msgType)
@@ -57,14 +71,16 @@ func (m *uraMessage) UnmarshalJSON(data []byte) error {
 	err = errors.Join(
 		json.Unmarshal(arr[1], &m.Stop.Name),
 		json.Unmarshal(arr[2], &m.Stop.Towards),
-		json.Unmarshal(arr[3], &m.Stop.Lat),
-		json.Unmarshal(arr[4], &m.Stop.Lon),
-		json.Unmarshal(arr[5], &m.Bus.Number),
-		json.Unmarshal(arr[6], &etaMS),
+		json.Unmarshal(arr[3], &m.State),
+		json.Unmarshal(arr[4], &m.Stop.Lat),
+		json.Unmarshal(arr[5], &m.Stop.Lon),
+		json.Unmarshal(arr[6], &m.Bus.Number),
+		json.Unmarshal(arr[7], &etaMS),
 	)
 	if err != nil {
 		return err
 	}
+
 	m.Bus.ETA = time.UnixMilli(etaMS)
 	return nil
 }
@@ -92,10 +108,90 @@ func logClockSkew(raw json.RawMessage) {
 	slog.Debug("TFL clock skew", "skew", skew)
 }
 
+// parseStopArray parses a URA type-0 message [0, StopPointName, StopPointState]
+func parseStopArray(raw json.RawMessage) (StopInfo, error) {
+	var arr []json.RawMessage
+	err := json.Unmarshal(raw, &arr)
+	if err != nil {
+		return StopInfo{}, err
+	}
+	if len(arr) < 3 {
+		return StopInfo{}, fmt.Errorf("type-0 message too short")
+	}
+	var msgType int
+	err = json.Unmarshal(arr[0], &msgType)
+	if err != nil || msgType != 0 {
+		return StopInfo{}, fmt.Errorf("not a type-0 message")
+	}
+
+	var info StopInfo
+	err = errors.Join(
+		json.Unmarshal(arr[1], &info.Name),
+		json.Unmarshal(arr[2], &info.State),
+	)
+	return info, err
+}
+
+// parseStatusMessage parses a URA type-2 message with various possible formats
+func parseStatusMessage(raw json.RawMessage) (StatusMessage, error) {
+	var arr []json.RawMessage
+	err := json.Unmarshal(raw, &arr)
+	if err != nil {
+		return StatusMessage{}, err
+	}
+	if len(arr) < 5 {
+		return StatusMessage{}, fmt.Errorf("type-2 message too short")
+	}
+	var msgType int
+	err = json.Unmarshal(arr[0], &msgType)
+	if err != nil || msgType != 2 {
+		return StatusMessage{}, fmt.Errorf("not a type-2 message")
+	}
+
+	var msg StatusMessage
+	msg.Priority = 1
+
+	if len(arr) == 8 {
+		// Format with ReturnList fields: [2, StopName, Direction, StopState, Lat, Lon, MessageType, MessageText]
+		err = errors.Join(
+			json.Unmarshal(arr[6], &msg.Type),
+			json.Unmarshal(arr[7], &msg.Text),
+		)
+		return msg, err
+	}
+
+	if len(arr) >= 5 && len(arr) < 8 {
+		// Format: [2, StopName, StopState, MessageType, MessageText]
+		err = errors.Join(
+			json.Unmarshal(arr[3], &msg.Type),
+			json.Unmarshal(arr[4], &msg.Text),
+		)
+		return msg, err
+	}
+
+	if len(arr) >= 7 {
+		// Format: [2, MessageUUID, MessageText, MessageType, MessagePriority, StartTime_ms, ExpireTime_ms]
+		var startMS, expireMS int64
+		err = errors.Join(
+			json.Unmarshal(arr[2], &msg.Text),
+			json.Unmarshal(arr[3], &msg.Type),
+			json.Unmarshal(arr[4], &msg.Priority),
+			json.Unmarshal(arr[5], &startMS),
+			json.Unmarshal(arr[6], &expireMS),
+		)
+		if err == nil {
+			msg.Start = time.UnixMilli(startMS)
+			msg.Expire = time.UnixMilli(expireMS)
+		}
+		return msg, err
+	}
+
+	return StatusMessage{}, fmt.Errorf("unknown type-2 format")
+}
+
 // GetBusData fetches arrivals and stop metadata for the given stop in a single
-// request. The URA API returns type-1 messages in the form:
-//
-//	[1, StopPointName, Towards, Latitude, Longitude, LineName, EstimatedTime_ms]
+// request. The URA API returns type-1 messages for arrivals, type-2 messages for
+// status/disruptions, and type-4 messages for server timestamp.
 func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
@@ -103,7 +199,7 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	}
 	q := u.Query()
 	q.Set("StopCode1", strconv.Itoa(stop))
-	q.Set("ReturnList", "StopPointName,LineName,EstimatedTime,Towards,Latitude,Longitude")
+	q.Set("ReturnList", "StopPointName,LineName,EstimatedTime,Towards,Latitude,Longitude,StopPointState,MessageText,MessageType")
 	u.RawQuery = q.Encode()
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
@@ -143,20 +239,50 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 		if len(arr) > 0 {
 			json.Unmarshal(arr[0], &msgType)
 		}
-		if msgType == 4 {
+
+		switch msgType {
+		case 0:
+			stopInfo, err := parseStopArray(raw)
+			if err != nil {
+				slog.Warn("decode TFL stop array", "err", err)
+				continue
+			}
+			if info.Name == "" {
+				info = stopInfo
+			} else {
+				info.State = stopInfo.State
+			}
+		case 1:
+			var msg uraMessage
+			err := json.Unmarshal(raw, &msg)
+			if err != nil {
+				slog.Warn("decode TFL response", "err", err)
+				continue
+			}
+			if info.Name == "" {
+				info = msg.Stop
+				info.State = msg.State
+			}
+			buses = append(buses, msg.Bus)
+		case 2:
+			msg, err := parseStatusMessage(raw)
+			if err != nil {
+				slog.Warn("decode TFL status message", "err", err)
+				continue
+			}
+			info.Status = append(info.Status, msg)
+
+			if info.Name == "" && len(arr) > 1 {
+				var stopName string
+				if err := json.Unmarshal(arr[1], &stopName); err == nil {
+					info.Name = stopName
+				}
+			}
+		case 4:
 			logClockSkew(raw)
-			continue
+		default:
+			slog.Warn("unknown message type", "type", msgType)
 		}
-		var msg uraMessage
-		err = json.Unmarshal(raw, &msg)
-		if err != nil {
-			slog.Warn("decode TFL response", "err", err)
-			continue // not type 1, type 4 or malformed row
-		}
-		if info.Name == "" {
-			info = msg.Stop
-		}
-		buses = append(buses, msg.Bus)
 	}
 	slices.SortFunc(buses, func(a, b Bus) int {
 		return a.ETA.Compare(b.ETA)

@@ -10,6 +10,7 @@ import (
 	"image/draw"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"golang.org/x/image/colornames"
@@ -21,6 +22,11 @@ import (
 
 //go:embed fonts/Anton-subset.ttf
 var antonTTF []byte
+
+var (
+	redColor    = image.NewUniform(colornames.Map["red"])
+	orangeColor = image.NewUniform(colornames.Map["orange"])
+)
 
 const (
 	slotHeight      = 130
@@ -109,6 +115,7 @@ type renderer struct {
 	scrollBuses []Bus          // bus list snapshot taken when scroll started; nil when idle
 	stopID      int            // stop currently being rendered; animation resets on change; -1 = clock screen
 	bigFace     xfont.Face     // large face for bus numbers and ETAs
+	mediumFace  xfont.Face     // medium face for status messages
 	smallFace   xfont.Face     // small face for header, footer, and clock
 	clockFace   xfont.Face     // largest face that fits the screen width, used for clock screen
 	border      int            // left/right margin in pixels; proportional to screen width
@@ -147,9 +154,15 @@ func newRenderer(width int, invert bool, fontPath string, fontHeight int, textCo
 	if err != nil {
 		return nil, err
 	}
+	mediumFace, err := newFace(48)
+	if err != nil {
+		bigFace.Close()
+		return nil, err
+	}
 	smallFace, err := newFace(32)
 	if err != nil {
 		bigFace.Close()
+		mediumFace.Close()
 		return nil, err
 	}
 	border := 80
@@ -159,6 +172,7 @@ func newRenderer(width int, invert bool, fontPath string, fontHeight int, textCo
 	clockFace, err := newClockFace(width, border)
 	if err != nil {
 		bigFace.Close()
+		mediumFace.Close()
 		smallFace.Close()
 		return nil, err
 	}
@@ -183,17 +197,19 @@ func newRenderer(width int, invert bool, fontPath string, fontHeight int, textCo
 	}
 
 	return &renderer{
-		bigFace:   bigFace,
-		smallFace: smallFace,
-		clockFace: clockFace,
-		border:    border,
-		fg:        fg,
-		bg:        bg,
+		bigFace:    bigFace,
+		mediumFace: mediumFace,
+		smallFace:  smallFace,
+		clockFace:  clockFace,
+		border:     border,
+		fg:         fg,
+		bg:         bg,
 	}, nil
 }
 
 func (r *renderer) close() {
 	r.bigFace.Close()
+	r.mediumFace.Close()
 	r.smallFace.Close()
 	r.clockFace.Close()
 }
@@ -306,8 +322,41 @@ func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 	if info.Towards != "" {
 		header += " - To: " + info.Towards
 	}
-	if header != "" {
-		drawString(img, r.smallFace, r.border, r.smallFace.Metrics().Ascent.Ceil(), header, r.fg)
+
+	const headerH = 40
+	y := headerH + 10
+
+	if header != "" || len(info.Status) > 0 {
+		if header != "" {
+			clr := r.fg
+			if info.State == 2 || info.State == 3 {
+				clr = redColor
+			}
+			drawString(img, r.smallFace, r.border, y, header, clr)
+			y += r.smallFace.Metrics().Height.Ceil() + 5
+		}
+
+		if info.State == 2 || info.State == 3 {
+			stateMsg := "CLOSED"
+			if info.State == 1 {
+				stateMsg = "TEMP CLOSED"
+			}
+			drawString(img, r.smallFace, r.border, y, stateMsg, redColor)
+			y += r.smallFace.Metrics().Height.Ceil() + 5
+		}
+
+		for _, status := range info.Status {
+			if status.Text != "" {
+				lines := strings.Split(status.Text, "\n")
+				for _, line := range lines {
+					line = strings.TrimSpace(line)
+					if line != "" {
+						drawString(img, r.mediumFace, r.border, y, line, orangeColor)
+						y += r.mediumFace.Metrics().Height.Ceil()
+					}
+				}
+			}
+		}
 	}
 }
 
