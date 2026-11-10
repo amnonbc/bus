@@ -357,8 +357,8 @@ func (r *renderer) calcHeaderHeight(tt *timeTable, maxWidth int) int {
 		lineCount := 0
 		for _, status := range info.Status {
 			if status.Text != "" && y < maxAllowedY && lineCount < maxStatusLines {
-				lines := strings.Split(status.Text, "\n")
-				for _, line := range lines {
+				lines := strings.SplitSeq(status.Text, "\n")
+				for line := range lines {
 					if y >= maxAllowedY || lineCount >= maxStatusLines {
 						break
 					}
