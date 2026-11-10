@@ -33,6 +33,7 @@ const (
 	scrollDuration  = 5 * time.Second
 	busListY        = 150 // Y baseline of the first bus row, below the header band
 	maxVisibleBuses = 3   // bus rows shown when not animating
+	maxStatusLines  = 2   // Maximum number of lines for status messages
 )
 
 // smoothstep maps t ∈ [0,1] to [0,1] with zero first-derivative at both
@@ -96,6 +97,22 @@ func drawString(img *image.RGBA, face xfont.Face, x, y int, s string, clr *image
 		Dot:  fixed.P(x, y),
 	}
 	d.DrawString(s)
+}
+
+// truncateToFit returns text truncated to fit within maxWidth pixels,
+// with "..." appended if truncated.
+func truncateToFit(face xfont.Face, text string, maxWidth int) string {
+	if measureString(face, text) <= maxWidth {
+		return text
+	}
+	// Binary search for the longest substring that fits
+	for i := len(text) - 1; i > 0; i-- {
+		truncated := text[:i] + "..."
+		if measureString(face, truncated) <= maxWidth {
+			return truncated
+		}
+	}
+	return "..."
 }
 
 // firstIdxOf returns the index of the first bus in buses that has not yet departed.
@@ -315,6 +332,51 @@ func (r *renderer) drawFooter(img *image.RGBA, weatherStr string) {
 	drawString(img, r.smallFace, w-r.border-measureString(r.smallFace, timeStr), y, timeStr, r.fg)
 }
 
+// calcHeaderHeight returns how tall the header area will be.
+// Ensures buses at busListY are not overwritten.
+func (r *renderer) calcHeaderHeight(tt *timeTable, maxWidth int) int {
+	info := tt.getStopInfo()
+	header := info.Name
+	if info.Towards != "" {
+		header += " - To: " + info.Towards
+	}
+
+	const headerH = 40
+	y := headerH + 10
+	maxAllowedY := busListY - 10 // Leave 10px padding before buses
+
+	if header != "" || len(info.Status) > 0 {
+		if header != "" {
+			y += r.smallFace.Metrics().Height.Ceil() + 5
+		}
+
+		if info.State == 2 || info.State == 3 {
+			y += r.smallFace.Metrics().Height.Ceil() + 5
+		}
+
+		lineCount := 0
+		for _, status := range info.Status {
+			if status.Text != "" && y < maxAllowedY && lineCount < maxStatusLines {
+				lines := strings.Split(status.Text, "\n")
+				for _, line := range lines {
+					if y >= maxAllowedY || lineCount >= maxStatusLines {
+						break
+					}
+					line = strings.TrimSpace(line)
+					if line != "" {
+						y += r.mediumFace.Metrics().Height.Ceil()
+						lineCount++
+					}
+				}
+			}
+		}
+	}
+	if y > maxAllowedY {
+		return maxAllowedY
+	}
+	return y + 10 // Add padding below header content
+}
+
 // drawHeader renders the stop name and direction onto the top of img.
 func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 	info := tt.getStopInfo()
@@ -346,13 +408,20 @@ func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
 		}
 
 		for _, status := range info.Status {
-			if status.Text != "" {
+			if status.Text != "" && y < busListY-10 {
 				lines := strings.Split(status.Text, "\n")
+				availableWidth := img.Bounds().Max.X - 2*r.border
+				lineCount := 0
 				for _, line := range lines {
+					if y >= busListY-10 || lineCount >= maxStatusLines {
+						break
+					}
 					line = strings.TrimSpace(line)
 					if line != "" {
-						drawString(img, r.mediumFace, r.border, y, line, orangeColor)
+						truncated := truncateToFit(r.mediumFace, line, availableWidth)
+						drawString(img, r.mediumFace, r.border, y, truncated, orangeColor)
 						y += r.mediumFace.Metrics().Height.Ceil()
+						lineCount++
 					}
 				}
 			}
@@ -417,8 +486,10 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 	startIdx, startY, maxBuses := r.scrollLayout(firstIdxOf(buses), yOffset)
 	r.drawBuses(img, buses, startIdx, startY, maxBuses)
 
-	// Blank header and footer bands so scrolling bus rows cannot overwrite them.
-	const headerH, footerH = 40, 40
+	// Calculate header height and blank it out before drawing bus rows.
+	const footerH = 40
+	availableWidth := w - 2*r.border
+	headerH := r.calcHeaderHeight(tt, availableWidth)
 	draw.Draw(img, image.Rect(0, 0, w, headerH), r.bg, image.Point{}, draw.Src)
 	draw.Draw(img, image.Rect(0, h-footerH, w, h), r.bg, image.Point{}, draw.Src)
 
