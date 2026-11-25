@@ -29,11 +29,13 @@ var (
 )
 
 const (
-	slotHeight      = 130
-	scrollDuration  = 5 * time.Second
-	busListY        = 150 // Y baseline of the first bus row, below the header band
-	maxVisibleBuses = 3   // bus rows shown when not animating
-	maxStatusLines  = 2   // Maximum number of lines for status messages
+	slotHeight     = 130
+	scrollDuration = 5 * time.Second
+	busListY       = 150                   // Y baseline of the first bus row, below the header band
+	footerH        = 40                    // height of the footer band at the bottom of the screen
+	maxStatusLines = 2                     // Maximum number of lines for status messages
+	marqueeSpeed   = 20 * time.Millisecond // time per pixel of horizontal status scroll
+	marqueePause   = 2 * time.Second       // pause at each end of a status scroll
 )
 
 // smoothstep maps t ∈ [0,1] to [0,1] with zero first-derivative at both
@@ -99,22 +101,6 @@ func drawString(img *image.RGBA, face xfont.Face, x, y int, s string, clr *image
 	d.DrawString(s)
 }
 
-// truncateToFit returns text truncated to fit within maxWidth pixels,
-// with "..." appended if truncated.
-func truncateToFit(face xfont.Face, text string, maxWidth int) string {
-	if measureString(face, text) <= maxWidth {
-		return text
-	}
-	// Binary search for the longest substring that fits
-	for i := len(text) - 1; i > 0; i-- {
-		truncated := text[:i] + "..."
-		if measureString(face, truncated) <= maxWidth {
-			return truncated
-		}
-	}
-	return "..."
-}
-
 // firstIdxOf returns the index of the first bus in buses that has not yet departed.
 func firstIdxOf(buses []Bus) int {
 	for i, b := range buses {
@@ -127,17 +113,19 @@ func firstIdxOf(buses []Bus) int {
 
 // renderer holds animation state between frames.
 type renderer struct {
-	prevTopETA  time.Time      // ETA of the bus drawn at top last frame; zero if none
-	scrollStart time.Time      // when the current scroll animation started; zero if idle
-	scrollBuses []Bus          // bus list snapshot taken when scroll started; nil when idle
-	stopID      int            // stop currently being rendered; animation resets on change; -1 = clock screen
-	bigFace     xfont.Face     // large face for bus numbers and ETAs
-	mediumFace  xfont.Face     // medium face for status messages
-	smallFace   xfont.Face     // small face for header, footer, and clock
-	clockFace   xfont.Face     // largest face that fits the screen width, used for clock screen
-	border      int            // left/right margin in pixels; proportional to screen width
-	fg          *image.Uniform // foreground (text) colour
-	bg          *image.Uniform // background colour
+	prevTopETA      time.Time      // ETA of the bus drawn at top last frame; zero if none
+	scrollStart     time.Time      // when the current scroll animation started; zero if idle
+	scrollBuses     []Bus          // bus list snapshot taken when scroll started; nil when idle
+	stopID          int            // stop currently being rendered; animation resets on change; -1 = clock screen
+	bigFace         xfont.Face     // large face for bus numbers and ETAs
+	mediumFace      xfont.Face     // medium face for status messages
+	smallFace       xfont.Face     // small face for header, footer, and clock
+	clockFace       xfont.Face     // largest face that fits the screen width, used for clock screen
+	statusScrolling bool           // true if the last frame had a status line wider than the screen
+	startTime       time.Time      // reference time for status scrolling
+	border          int            // left/right margin in pixels; proportional to screen width
+	fg              *image.Uniform // foreground (text) colour
+	bg              *image.Uniform // background colour
 }
 
 // newClockFace returns the largest face whose rendered "00:00" fits within
@@ -219,6 +207,7 @@ func newRenderer(width int, invert bool, fontPath string, fontHeight int, textCo
 		smallFace:  smallFace,
 		clockFace:  clockFace,
 		border:     border,
+		startTime:  time.Now(),
 		fg:         fg,
 		bg:         bg,
 	}, nil
@@ -237,6 +226,13 @@ func (r *renderer) resetAnimation(stopID int) {
 	r.prevTopETA = time.Time{}
 	r.scrollStart = time.Time{}
 	r.scrollBuses = nil
+}
+
+// needsFastFrames reports whether the last frame contained motion (a bus
+// scroll or a scrolling status line), so frames must be drawn at video rate
+// rather than once a second.
+func (r *renderer) needsFastFrames() bool {
+	return r.isAnimating() || r.statusScrolling
 }
 
 // isAnimating reports whether a scroll animation is currently in progress.
@@ -285,16 +281,17 @@ func (r *renderer) advanceScroll(liveBuses []Bus, now time.Time) (buses []Bus, y
 	return liveBuses, 0
 }
 
-// scrollLayout returns the drawing parameters for the bus list.
-func (r *renderer) scrollLayout(firstIdx, yOffset int) (startIdx, startY, maxBuses int) {
+// scrollLayout returns the drawing parameters for the bus list. listY is the
+// baseline of the first row and maxVisible the number of rows that fit.
+func (r *renderer) scrollLayout(firstIdx, yOffset, listY, maxVisible int) (startIdx, startY, maxBuses int) {
 	if !r.isAnimating() {
-		return firstIdx, busListY, maxVisibleBuses
+		return firstIdx, listY, maxVisible
 	}
 	startIdx = firstIdx
 	if firstIdx > 0 {
 		startIdx = firstIdx - 1
 	}
-	return startIdx, busListY - (slotHeight - yOffset), maxVisibleBuses + 1
+	return startIdx, listY - (slotHeight - yOffset), maxVisible + 1
 }
 
 // drawBuses renders the bus arrival rows onto img.
@@ -332,100 +329,140 @@ func (r *renderer) drawFooter(img *image.RGBA, weatherStr string) {
 	drawString(img, r.smallFace, w-r.border-measureString(r.smallFace, timeStr), y, timeStr, r.fg)
 }
 
-// calcHeaderHeight returns how tall the header area will be.
-// Ensures buses at busListY are not overwritten.
-func (r *renderer) calcHeaderHeight(tt *timeTable, maxWidth int) int {
-	info := tt.getStopInfo()
+// stopHeader returns the "name - To: towards" header text for the stop.
+func stopHeader(info StopInfo) string {
 	header := info.Name
 	if info.Towards != "" {
 		header += " - To: " + info.Towards
 	}
-
-	const headerH = 40
-	y := headerH + 10
-	maxAllowedY := busListY - 10 // Leave 10px padding before buses
-
-	if header != "" || len(info.Status) > 0 {
-		if header != "" {
-			y += r.smallFace.Metrics().Height.Ceil() + 5
-		}
-
-		if info.State == 2 || info.State == 3 {
-			y += r.smallFace.Metrics().Height.Ceil() + 5
-		}
-
-		lineCount := 0
-		for _, status := range info.Status {
-			if status.Text != "" && y < maxAllowedY && lineCount < maxStatusLines {
-				lines := strings.SplitSeq(status.Text, "\n")
-				for line := range lines {
-					if y >= maxAllowedY || lineCount >= maxStatusLines {
-						break
-					}
-					line = strings.TrimSpace(line)
-					if line != "" {
-						y += r.mediumFace.Metrics().Height.Ceil()
-						lineCount++
-					}
-				}
-			}
-		}
-	}
-	if y > maxAllowedY {
-		return maxAllowedY
-	}
-	return y + 10 // Add padding below header content
+	return header
 }
 
-// drawHeader renders the stop name and direction onto the top of img.
-func (r *renderer) drawHeader(img *image.RGBA, tt *timeTable) {
-	info := tt.getStopInfo()
-	header := info.Name
-	if info.Towards != "" {
-		header += " - To: " + info.Towards
-	}
+// isClosed reports whether the stop state means the stop is closed.
+func isClosed(info StopInfo) bool {
+	return info.State == 2 || info.State == 3
+}
 
+// statusLines returns up to maxStatusLines non-empty lines of status text.
+func statusLines(info StopInfo) []string {
+	var out []string
+	for _, status := range info.Status {
+		for line := range strings.SplitSeq(status.Text, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			if len(out) >= maxStatusLines {
+				return out
+			}
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// statusTopY returns the baseline y of the first status line: below the stop
+// name and any closed notice.
+func (r *renderer) statusTopY(info StopInfo) int {
 	const headerH = 40
 	y := headerH + 10
+	lineH := r.smallFace.Metrics().Height.Ceil() + 5
+	if stopHeader(info) != "" {
+		y += lineH
+	}
+	if isClosed(info) {
+		y += lineH
+	}
+	return y
+}
 
-	if header != "" || len(info.Status) > 0 {
-		if header != "" {
-			clr := r.fg
-			if info.State == 2 || info.State == 3 {
-				clr = redColor
-			}
-			drawString(img, r.smallFace, r.border, y, header, clr)
-			y += r.smallFace.Metrics().Height.Ceil() + 5
-		}
+// calcHeaderHeight returns how tall the blanked header area is: down to the
+// bottom of the last status line, or of the stop name if there is no status.
+func (r *renderer) calcHeaderHeight(info StopInfo) int {
+	const padding = 10
+	y := r.statusTopY(info)
+	n := len(statusLines(info))
+	if n == 0 {
+		return y + padding
+	}
+	lineH := r.mediumFace.Metrics().Height.Ceil()
+	return y + (n-1)*lineH + r.mediumFace.Metrics().Descent.Ceil() + padding
+}
 
-		if info.State == 2 || info.State == 3 {
-			stateMsg := "CLOSED"
-			if info.State == 1 {
-				stateMsg = "TEMP CLOSED"
-			}
-			drawString(img, r.smallFace, r.border, y, stateMsg, redColor)
-			y += r.smallFace.Metrics().Height.Ceil() + 5
-		}
+// digitAscent returns how many pixels the tallest bus-row digit rises above its baseline.
+func (r *renderer) digitAscent() int {
+	bounds, _ := xfont.BoundString(r.bigFace, "0123456789")
+	return -bounds.Min.Y.Floor()
+}
 
-		for _, status := range info.Status {
-			if status.Text != "" && y < busListY-10 {
-				lines := strings.Split(status.Text, "\n")
-				availableWidth := img.Bounds().Max.X - 2*r.border
-				lineCount := 0
-				for _, line := range lines {
-					if y >= busListY-10 || lineCount >= maxStatusLines {
-						break
-					}
-					line = strings.TrimSpace(line)
-					if line != "" {
-						truncated := truncateToFit(r.mediumFace, line, availableWidth)
-						drawString(img, r.mediumFace, r.border, y, truncated, orangeColor)
-						y += r.mediumFace.Metrics().Height.Ceil()
-						lineCount++
-					}
-				}
-			}
+// busListLayout returns the baseline of the first bus row and the number of
+// rows that fit. The list starts below the header so a status message never
+// covers a bus; fewer rows are shown to make room.
+func (r *renderer) busListLayout(info StopInfo, screenH int) (listY, maxVisible int) {
+	listY = max(busListY, r.calcHeaderHeight(info)+r.digitAscent())
+	maxVisible = (screenH-footerH-listY)/slotHeight + 1
+	return listY, max(maxVisible, 0)
+}
+
+// drawHeader renders the stop name, direction and status messages onto the top of img.
+func (r *renderer) drawHeader(img *image.RGBA, info StopInfo, elapsed time.Duration) {
+	const headerH = 40
+	y := headerH + 10
+	lineH := r.smallFace.Metrics().Height.Ceil() + 5
+
+	if header := stopHeader(info); header != "" {
+		clr := r.fg
+		if isClosed(info) {
+			clr = redColor
 		}
+		drawString(img, r.smallFace, r.border, y, header, clr)
+		y += lineH
+	}
+	if isClosed(info) {
+		drawString(img, r.smallFace, r.border, y, "CLOSED", redColor)
+	}
+	r.drawStatus(img, info, elapsed)
+}
+
+// marqueeOffset returns how many pixels to shift text of textWidth left so
+// that long text scrolls slowly through a window of windowWidth. The text
+// pauses at the start and at the end, then jumps back and repeats. Text that
+// fits is never shifted.
+func marqueeOffset(textWidth, windowWidth int, elapsed time.Duration) int {
+	overflow := textWidth - windowWidth
+	if overflow <= 0 {
+		return 0
+	}
+	scroll := time.Duration(overflow) * marqueeSpeed
+	pos := elapsed % (scroll + 2*marqueePause)
+	switch {
+	case pos < marqueePause:
+		return 0
+	case pos < marqueePause+scroll:
+		return int((pos - marqueePause) / marqueeSpeed)
+	default:
+		return overflow
+	}
+}
+
+// drawStatus renders the status message lines below the stop name. Lines too
+// wide for the screen scroll horizontally, clipped to the margins.
+func (r *renderer) drawStatus(img *image.RGBA, info StopInfo, elapsed time.Duration) {
+	y := r.statusTopY(info)
+	window := image.Rect(r.border, 0, img.Bounds().Max.X-r.border, img.Bounds().Max.Y)
+	clipped, ok := img.SubImage(window).(*image.RGBA)
+	if !ok {
+		return
+	}
+	r.statusScrolling = false
+	for _, line := range statusLines(info) {
+		width := measureString(r.mediumFace, line)
+		if width > window.Dx() {
+			r.statusScrolling = true
+		}
+		x := r.border - marqueeOffset(width, window.Dx(), elapsed)
+		drawString(clipped, r.mediumFace, x, y, line, orangeColor)
+		y += r.mediumFace.Metrics().Height.Ceil()
 	}
 }
 
@@ -468,6 +505,7 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 		if r.stopID != -1 {
 			r.resetAnimation(-1)
 		}
+		r.statusScrolling = false
 		r.renderClock(img, weatherStr)
 		return
 	}
@@ -482,19 +520,17 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 
 	draw.Draw(img, img.Bounds(), r.bg, image.Point{}, draw.Src)
 
+	info := tt.getStopInfo()
+	listY, maxVisible := r.busListLayout(info, h)
+
 	buses, yOffset := r.advanceScroll(tt.getBuses(), time.Now())
-	startIdx, startY, maxBuses := r.scrollLayout(firstIdxOf(buses), yOffset)
+	startIdx, startY, maxBuses := r.scrollLayout(firstIdxOf(buses), yOffset, listY, maxVisible)
 	r.drawBuses(img, buses, startIdx, startY, maxBuses)
 
-	// Calculate header height and blank it out before drawing bus rows.
-	const footerH = 40
-	availableWidth := w - 2*r.border
-	headerH := r.calcHeaderHeight(tt, availableWidth)
-	draw.Draw(img, image.Rect(0, 0, w, headerH), r.bg, image.Point{}, draw.Src)
+	// Blank the header and footer bands so they sit on top of the scrolling bus rows.
+	draw.Draw(img, image.Rect(0, 0, w, r.calcHeaderHeight(info)), r.bg, image.Point{}, draw.Src)
 	draw.Draw(img, image.Rect(0, h-footerH, w, h), r.bg, image.Point{}, draw.Src)
 
-	// Header and footer drawn last so they always appear on top of bus rows.
-	r.drawHeader(img, tt)
+	r.drawHeader(img, info, time.Since(r.startTime))
 	r.drawFooter(img, weatherStr)
-
 }

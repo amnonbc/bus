@@ -117,13 +117,13 @@ func (fb *frameBuffer) runLoop(active *atomic.Pointer[timeTable], weather *atomi
 			slog.Error("flip failed", "err", err)
 		}
 		fb.publishFrame(back)
-		if fb.r.isAnimating() != wasAnimating {
-			if fb.r.isAnimating() {
-				tick.Reset(33 * time.Millisecond) // ~30 fps during animation
+		if fb.r.needsFastFrames() != wasAnimating {
+			if fb.r.needsFastFrames() {
+				tick.Reset(33 * time.Millisecond) // ~30 fps during animation or status scroll
 			} else {
 				tick.Reset(time.Second)
 			}
-			wasAnimating = fb.r.isAnimating()
+			wasAnimating = fb.r.needsFastFrames()
 		}
 		select {
 		case <-tick.C:

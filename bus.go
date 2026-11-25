@@ -3,7 +3,9 @@
 package main
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -41,65 +43,103 @@ type StopInfo struct {
 	Status  []StatusMessage
 }
 
-// uraMessage is a decoded URA type-1 row:
-//
-//	[1, StopPointName, Towards, StopPointState, Latitude, Longitude, LineName, EstimatedTime_ms]
-type uraMessage struct {
-	Stop  StopInfo
-	Bus   Bus
-	State int
-}
-
-func (m *uraMessage) UnmarshalJSON(data []byte) error {
-	var arr []json.RawMessage
-	err := json.Unmarshal(data, &arr)
-	if err != nil {
-		return err
+// readFields decodes consecutive JSON values from dec into ptrs.
+func readFields(dec *jsontext.Decoder, ptrs ...any) error {
+	for _, p := range ptrs {
+		err := json.UnmarshalDecode(dec, p)
+		if err != nil {
+			return err
+		}
 	}
-	if len(arr) < 7 {
-		return fmt.Errorf("type-1 message too short")
-	}
-	var msgType int
-	err = json.Unmarshal(arr[0], &msgType)
-	if err != nil {
-		return fmt.Errorf("unmarshal message type: %w", err)
-	}
-	if msgType != 1 {
-		return fmt.Errorf("not a type-1 message %s", data)
-	}
-	var etaMS int64
-	err = errors.Join(
-		json.Unmarshal(arr[1], &m.Stop.Name),
-		json.Unmarshal(arr[2], &m.Stop.Towards),
-		json.Unmarshal(arr[3], &m.State),
-		json.Unmarshal(arr[4], &m.Stop.Lat),
-		json.Unmarshal(arr[5], &m.Stop.Lon),
-		json.Unmarshal(arr[6], &m.Bus.Number),
-		json.Unmarshal(arr[7], &etaMS),
-	)
-	if err != nil {
-		return err
-	}
-
-	m.Bus.ETA = time.UnixMilli(etaMS)
 	return nil
 }
 
-// logClockSkew parses a URA type-4 message [4, URAVersion, TimeStamp_ms] and
-// logs the difference between TFL's server clock and the local machine clock
-// if the difference is more than 10 seconds.
-func logClockSkew(raw json.RawMessage) {
-	var arr [3]json.RawMessage
-	err := json.Unmarshal(raw, &arr)
-	if err != nil {
-		return
+// readRest decodes all remaining elements of the current array.
+func readRest(dec *jsontext.Decoder) ([]jsontext.Value, error) {
+	var rest []jsontext.Value
+	for dec.PeekKind() != ']' {
+		var v jsontext.Value
+		err := json.UnmarshalDecode(dec, &v)
+		if err != nil {
+			return nil, err
+		}
+		rest = append(rest, v)
 	}
+	return rest, nil
+}
+
+// readHeader consumes the opening '[' and returns the message type.
+func readHeader(dec *jsontext.Decoder) (int, error) {
+	tok, err := dec.ReadToken()
+	if err != nil {
+		return 0, err
+	}
+	if tok.Kind() != '[' {
+		return 0, fmt.Errorf("message is not an array")
+	}
+	var msgType int
+	err = json.UnmarshalDecode(dec, &msgType)
+	return msgType, err
+}
+
+// readArrival decodes the rest of a type-1 message:
+//
+//	[1, StopPointName, Towards, StopPointState, Latitude, Longitude, LineName, EstimatedTime_ms]
+func readArrival(dec *jsontext.Decoder) (StopInfo, Bus, error) {
+	var stop StopInfo
+	var bus Bus
+	var etaMS int64
+	err := readFields(dec, &stop.Name, &stop.Towards, &stop.State, &stop.Lat, &stop.Lon, &bus.Number, &etaMS)
+	bus.ETA = time.UnixMilli(etaMS)
+	return stop, bus, err
+}
+
+// readStop decodes the rest of a type-0 message: [0, StopPointName, StopPointState]
+func readStop(dec *jsontext.Decoder) (StopInfo, error) {
+	var info StopInfo
+	err := readFields(dec, &info.Name, &info.State)
+	return info, err
+}
+
+// readStatus decodes the rest of a type-2 message and returns the stop name it
+// carries. Two layouts are seen in practice, distinguished by length:
+//
+//	[2, StopName, Direction, StopState, Lat, Lon, MessageType, MessageText]
+//	[2, StopName, StopState, MessageType, MessageText]
+func readStatus(dec *jsontext.Decoder) (msg StatusMessage, stopName string, err error) {
+	rest, err := readRest(dec)
+	if err != nil {
+		return msg, "", err
+	}
+	var typeIdx int
+	switch {
+	case len(rest) == 7:
+		typeIdx = 5
+	case len(rest) >= 4 && len(rest) < 7:
+		typeIdx = 2
+	default:
+		return msg, "", fmt.Errorf("unknown type-2 format with %d fields", len(rest)+1)
+	}
+	msg.Priority = 1
+	err = errors.Join(
+		json.Unmarshal(rest[0], &stopName),
+		json.Unmarshal(rest[typeIdx], &msg.Type),
+		json.Unmarshal(rest[typeIdx+1], &msg.Text),
+	)
+	return msg, stopName, err
+}
+
+// logClockSkew reads the rest of a type-4 message [4, URAVersion, TimeStamp_ms]
+// and logs the difference between TFL's server clock and the local machine
+// clock if the difference is more than 10 seconds.
+func logClockSkew(dec *jsontext.Decoder) {
+	var version string
 	var tsMS int64
-	err = json.Unmarshal(arr[2], &tsMS)
+	err := readFields(dec, &version, &tsMS)
 	if err != nil {
 		return
 	}
-	skew := time.UnixMilli(tsMS).Sub(time.Now())
+	skew := time.Until(time.UnixMilli(tsMS))
 	metricTFLClockSkew.Set(skew.Seconds())
 	if skew.Abs() > 10*time.Second {
 		slog.Warn("TFL clock skew", "skew", skew)
@@ -108,85 +148,70 @@ func logClockSkew(raw json.RawMessage) {
 	slog.Debug("TFL clock skew", "skew", skew)
 }
 
-// parseStopArray parses a URA type-0 message [0, StopPointName, StopPointState]
-func parseStopArray(raw json.RawMessage) (StopInfo, error) {
-	var arr []json.RawMessage
-	err := json.Unmarshal(raw, &arr)
-	if err != nil {
-		return StopInfo{}, err
-	}
-	if len(arr) < 3 {
-		return StopInfo{}, fmt.Errorf("type-0 message too short")
-	}
-	var msgType int
-	err = json.Unmarshal(arr[0], &msgType)
-	if err != nil || msgType != 0 {
-		return StopInfo{}, fmt.Errorf("not a type-0 message")
-	}
-
-	var info StopInfo
-	err = errors.Join(
-		json.Unmarshal(arr[1], &info.Name),
-		json.Unmarshal(arr[2], &info.State),
-	)
-	return info, err
+// accumulator collects the decoded content of a URA response.
+type accumulator struct {
+	buses []Bus
+	info  StopInfo
 }
 
-// parseStatusMessage parses a URA type-2 message with various possible formats
-func parseStatusMessage(raw json.RawMessage) (StatusMessage, error) {
-	var arr []json.RawMessage
-	err := json.Unmarshal(raw, &arr)
+// add decodes one raw URA message and merges it into the accumulator.
+// Malformed messages are logged and skipped.
+func (a *accumulator) add(raw jsontext.Value) {
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	msgType, err := readHeader(dec)
 	if err != nil {
-		return StatusMessage{}, err
+		slog.Warn("decode TFL message header", "err", err)
+		return
 	}
-	if len(arr) < 5 {
-		return StatusMessage{}, fmt.Errorf("type-2 message too short")
+	switch msgType {
+	case 0:
+		a.addStop(dec)
+	case 1:
+		a.addArrival(dec)
+	case 2:
+		a.addStatus(dec)
+	case 4:
+		logClockSkew(dec)
+	default:
+		slog.Warn("unknown message type", "type", msgType)
 	}
-	var msgType int
-	err = json.Unmarshal(arr[0], &msgType)
-	if err != nil || msgType != 2 {
-		return StatusMessage{}, fmt.Errorf("not a type-2 message")
-	}
+}
 
-	var msg StatusMessage
-	msg.Priority = 1
-
-	if len(arr) == 8 {
-		// Format with ReturnList fields: [2, StopName, Direction, StopState, Lat, Lon, MessageType, MessageText]
-		err = errors.Join(
-			json.Unmarshal(arr[6], &msg.Type),
-			json.Unmarshal(arr[7], &msg.Text),
-		)
-		return msg, err
+func (a *accumulator) addStop(dec *jsontext.Decoder) {
+	stop, err := readStop(dec)
+	if err != nil {
+		slog.Warn("decode TFL stop array", "err", err)
+		return
 	}
-
-	if len(arr) >= 5 && len(arr) < 8 {
-		// Format: [2, StopName, StopState, MessageType, MessageText]
-		err = errors.Join(
-			json.Unmarshal(arr[3], &msg.Type),
-			json.Unmarshal(arr[4], &msg.Text),
-		)
-		return msg, err
+	if a.info.Name == "" {
+		a.info = stop
+		return
 	}
+	a.info.State = stop.State
+}
 
-	if len(arr) >= 7 {
-		// Format: [2, MessageUUID, MessageText, MessageType, MessagePriority, StartTime_ms, ExpireTime_ms]
-		var startMS, expireMS int64
-		err = errors.Join(
-			json.Unmarshal(arr[2], &msg.Text),
-			json.Unmarshal(arr[3], &msg.Type),
-			json.Unmarshal(arr[4], &msg.Priority),
-			json.Unmarshal(arr[5], &startMS),
-			json.Unmarshal(arr[6], &expireMS),
-		)
-		if err == nil {
-			msg.Start = time.UnixMilli(startMS)
-			msg.Expire = time.UnixMilli(expireMS)
-		}
-		return msg, err
+func (a *accumulator) addArrival(dec *jsontext.Decoder) {
+	stop, bus, err := readArrival(dec)
+	if err != nil {
+		slog.Warn("decode TFL response", "err", err)
+		return
 	}
+	if a.info.Name == "" {
+		a.info = stop
+	}
+	a.buses = append(a.buses, bus)
+}
 
-	return StatusMessage{}, fmt.Errorf("unknown type-2 format")
+func (a *accumulator) addStatus(dec *jsontext.Decoder) {
+	msg, stopName, err := readStatus(dec)
+	if err != nil {
+		slog.Warn("decode TFL status message", "err", err)
+		return
+	}
+	a.info.Status = append(a.info.Status, msg)
+	if a.info.Name == "" {
+		a.info.Name = stopName
+	}
 }
 
 // GetBusData fetches arrivals and stop metadata for the given stop in a single
@@ -206,7 +231,7 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	if err != nil {
 		panic(err)
 	}
-	req.Header.Set("User-Agent", "amnon_bus_times/2.0 (amnonbc@gmail.com)")
+	req.Header.Set("User-Agent", "amnon_bus_times/2.0")
 
 	r, err := httpClient.Do(req)
 	if err != nil {
@@ -220,12 +245,10 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 	}
 	metricTFLRequests.WithLabelValues("ok").Inc()
 
-	var buses []Bus
-	var info StopInfo
-	dec := json.NewDecoder(r.Body)
+	var acc accumulator
+	dec := jsontext.NewDecoder(r.Body)
 	for {
-		var raw json.RawMessage
-		err := dec.Decode(&raw)
+		raw, err := dec.ReadValue()
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -233,57 +256,9 @@ func GetBusData(baseURL string, stop int) ([]Bus, StopInfo, error) {
 			slog.Error("decode TFL response", "err", err)
 			return nil, StopInfo{}, err
 		}
-		var arr []json.RawMessage
-		var msgType int
-		json.Unmarshal(raw, &arr)
-		if len(arr) > 0 {
-			json.Unmarshal(arr[0], &msgType)
-		}
-
-		switch msgType {
-		case 0:
-			stopInfo, err := parseStopArray(raw)
-			if err != nil {
-				slog.Warn("decode TFL stop array", "err", err)
-				continue
-			}
-			if info.Name == "" {
-				info = stopInfo
-			} else {
-				info.State = stopInfo.State
-			}
-		case 1:
-			var msg uraMessage
-			err := json.Unmarshal(raw, &msg)
-			if err != nil {
-				slog.Warn("decode TFL response", "err", err)
-				continue
-			}
-			if info.Name == "" {
-				info = msg.Stop
-				info.State = msg.State
-			}
-			buses = append(buses, msg.Bus)
-		case 2:
-			msg, err := parseStatusMessage(raw)
-			if err != nil {
-				slog.Warn("decode TFL status message", "err", err)
-				continue
-			}
-			info.Status = append(info.Status, msg)
-
-			if info.Name == "" && len(arr) > 1 {
-				var stopName string
-				if err := json.Unmarshal(arr[1], &stopName); err == nil {
-					info.Name = stopName
-				}
-			}
-		case 4:
-			logClockSkew(raw)
-		default:
-			slog.Warn("unknown message type", "type", msgType)
-		}
+		acc.add(raw)
 	}
+	buses, info := acc.buses, acc.info
 	slices.SortFunc(buses, func(a, b Bus) int {
 		return a.ETA.Compare(b.ETA)
 	})
