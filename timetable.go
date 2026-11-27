@@ -12,10 +12,12 @@ import (
 
 type timeTable struct {
 	stopID int
-	ready  chan struct{}
-	signal sync.Once
-	info   atomic.Pointer[StopInfo]
-	busses atomic.Pointer[[]Bus]
+	// statusFrom, if set, marks this as the status screen for those stops.
+	statusFrom []*timeTable
+	ready      chan struct{}
+	signal     sync.Once
+	info       atomic.Pointer[StopInfo]
+	busses     atomic.Pointer[[]Bus]
 }
 
 func newTimeTable(stopID int) *timeTable {

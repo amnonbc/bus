@@ -13,6 +13,8 @@ The display shows the stop name and direction at the top, up to three upcoming b
 
 If a second bus stop is configured, tapping the Raspberry Pi touchscreen toggles between the two stops.
 
+Tapping past the last stop shows the status messages of all stops, wrapped to fit on one screen, and then the clock.
+
 ## Display output
 
 ### DRM/KMS (preferred)
@@ -89,7 +91,7 @@ Copy the binary to the Pi with `scp bus pi@raspberrypi:bus/bus`.
 ```
 ./bus [flags]
 
-  -stop int          TFL bus stop code; repeat for multiple stops (touch cycles through stops then shows clock)
+  -stop int          TFL bus stop code; repeat for multiple stops (touch cycles through stops, status messages and clock)
   -touch str         touch input device path (auto-detected if empty)
   -debounce dur      minimum interval between touch-triggered stop switches (default 100ms)
   -rotate            rotate display 180 degrees (default true)

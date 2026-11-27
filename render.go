@@ -126,6 +126,7 @@ type renderer struct {
 	border          int            // left/right margin in pixels; proportional to screen width
 	fg              *image.Uniform // foreground (text) colour
 	bg              *image.Uniform // background colour
+	status          statusLayout   // cached layout of the status screen
 }
 
 // newClockFace returns the largest face whose rendered "00:00" fits within
@@ -218,6 +219,9 @@ func (r *renderer) close() {
 	r.mediumFace.Close()
 	r.smallFace.Close()
 	r.clockFace.Close()
+	if r.status.face != nil {
+		r.status.face.Close()
+	}
 }
 
 // resetAnimation clears all scroll animation state and sets the current stop ID.
@@ -499,7 +503,8 @@ func (r *renderer) renderClock(img *image.RGBA, weatherStr string) {
 }
 
 // renderFrame draws a complete frame onto img. If tt is nil the clock screen
-// is shown instead of bus arrivals.
+// is shown instead of bus arrivals; if it is a status screen, the status
+// messages are shown.
 func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string) {
 	if tt == nil {
 		if r.stopID != -1 {
@@ -507,6 +512,13 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 		}
 		r.statusScrolling = false
 		r.renderClock(img, weatherStr)
+		return
+	}
+
+	if tt.statusFrom != nil {
+		r.resetAnimation(-2)
+		r.statusScrolling = false
+		r.renderStatus(img, tt.statusFrom)
 		return
 	}
 
