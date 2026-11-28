@@ -502,6 +502,14 @@ func (r *renderer) renderClock(img *image.RGBA, weatherStr string) {
 	drawString(img, r.smallFace, r.border, weatherY, weatherStr, r.fg)
 }
 
+// stopBackground returns the background colour for the stop's screen.
+func (r *renderer) stopBackground(tt *timeTable) *image.Uniform {
+	if tt.bg != nil {
+		return tt.bg
+	}
+	return r.bg
+}
+
 // renderFrame draws a complete frame onto img. If tt is nil the clock screen
 // is shown instead of bus arrivals; if it is a status screen, the status
 // messages are shown.
@@ -530,7 +538,8 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 		r.resetAnimation(tt.stopID)
 	}
 
-	draw.Draw(img, img.Bounds(), r.bg, image.Point{}, draw.Src)
+	bg := r.stopBackground(tt)
+	draw.Draw(img, img.Bounds(), bg, image.Point{}, draw.Src)
 
 	info := tt.getStopInfo()
 	listY, maxVisible := r.busListLayout(info, h)
@@ -540,8 +549,8 @@ func (r *renderer) renderFrame(img *image.RGBA, tt *timeTable, weatherStr string
 	r.drawBuses(img, buses, startIdx, startY, maxBuses)
 
 	// Blank the header and footer bands so they sit on top of the scrolling bus rows.
-	draw.Draw(img, image.Rect(0, 0, w, r.calcHeaderHeight(info)), r.bg, image.Point{}, draw.Src)
-	draw.Draw(img, image.Rect(0, h-footerH, w, h), r.bg, image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, 0, w, r.calcHeaderHeight(info)), bg, image.Point{}, draw.Src)
+	draw.Draw(img, image.Rect(0, h-footerH, w, h), bg, image.Point{}, draw.Src)
 
 	r.drawHeader(img, info, time.Since(r.startTime))
 	r.drawFooter(img, weatherStr)

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -70,15 +69,8 @@ func weatherLoop(apiKey string, tt *timeTable, weather *atomic.Pointer[string]) 
 }
 
 func main() {
-	var stops []int
-	flag.Func("stop", "bus stop code; repeat for multiple stops (touch cycles through stops, status messages and clock)", func(s string) error {
-		v, err := strconv.Atoi(s)
-		if err != nil {
-			return err
-		}
-		stops = append(stops, v)
-		return nil
-	})
+	var stops stopList
+	flag.Var(&stops, "stop", "bus stop code, optionally with a background color, e.g. 12345:darkblue; repeat for multiple stops (touch cycles through stops, status messages and clock)")
 	touchDev := flag.String("touch", "", "touch input device path (auto-detected if empty)")
 	debounce := flag.Duration("debounce", 100*time.Millisecond, "minimum interval between touch-triggered stop switches")
 	rotate := flag.Bool("rotate", true, "rotate display 180 degrees")
@@ -104,7 +96,8 @@ func main() {
 
 	tts := make([]*timeTable, len(stops))
 	for i, s := range stops {
-		tts[i] = newTimeTable(s)
+		tts[i] = newTimeTable(s.code)
+		tts[i].bg = s.bg
 		tts[i].start()
 	}
 

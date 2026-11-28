@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 
 type timeTable struct {
 	stopID int
+	bg     *image.Uniform // background of this stop's screen; nil means default
 	// statusFrom, if set, marks this as the status screen for those stops.
 	statusFrom []*timeTable
 	ready      chan struct{}

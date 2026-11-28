@@ -91,7 +91,9 @@ Copy the binary to the Pi with `scp bus pi@raspberrypi:bus/bus`.
 ```
 ./bus [flags]
 
-  -stop int          TFL bus stop code; repeat for multiple stops (touch cycles through stops, status messages and clock)
+  -stop code[:color] TFL bus stop code, optionally with an X11 background color name for its screen
+                     (e.g. 12345:darkblue); repeat for multiple stops (touch cycles through stops,
+                     status messages and clock)
   -touch str         touch input device path (auto-detected if empty)
   -debounce dur      minimum interval between touch-triggered stop switches (default 100ms)
   -rotate            rotate display 180 degrees (default true)
